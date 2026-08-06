@@ -21,6 +21,8 @@ root without editing it, copy its `LICENSE`, update the recorded commit and path
 list, then review parser compatibility and rerun tests. Verify this baseline with:
 
 ```sh
+D2B_ORACLE="${D2B_ORACLE:-$HOME/Dev/Device-to-Browser-Data-Streaming}"
+
 diff -qr src/protocol/d2b-reference \
-  /home/yu-ichirou/Dev/Device-to-Browser-Data-Streaming/reference/browser/src
+  "$D2B_ORACLE/reference/browser/src"
 ```

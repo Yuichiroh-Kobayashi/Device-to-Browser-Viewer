@@ -1,7 +1,7 @@
 # Test results (primary validation session)
 
-The final local project path was `/home/yu-ichirou/Dev/Device-to-Browser-Viewer`.
-Run it with `python3 tools/serve.py`; the index is at
+The final local project was tested from the repository root. Run it with
+`python3 tools/serve.py`; the index is at
 <http://127.0.0.1:8080/> and browser self-tests are at
 <http://127.0.0.1:8080/tests/>.
 
@@ -20,7 +20,7 @@ The reference browser harness at
 ## Viewer checks
 
 ~~~sh
-cd /home/yu-ichirou/Dev/Device-to-Browser-Viewer
+cd "$HOME/Dev/Device-to-Browser-Viewer"
 node --test tests/node-self-tests.mjs
 node tests/node-self-tests.mjs
 python3 -m py_compile tools/serve.py
@@ -45,9 +45,17 @@ The authoritative VAMeter fixture validator was run as follows from the final
 project root:
 
 ~~~sh
-python3 /home/yu-ichirou/Dev/worktrees/VAMeter-Edu/d2b-vi-planA-live/tests/d2b_vi_integration/validate_live_capture.py \
-  --oracle /home/yu-ichirou/Dev/Device-to-Browser-Data-Streaming fixtures/capture/synthetic-live-capture.json
+D2B_ORACLE="${D2B_ORACLE:-$HOME/Dev/Device-to-Browser-Data-Streaming}"
+VAMETER_D2B_WORKTREE="${VAMETER_D2B_WORKTREE:-$HOME/Dev/worktrees/VAMeter-Edu/d2b-vi-planA-live}"
+
+python3 \
+  "$VAMETER_D2B_WORKTREE/tests/d2b_vi_integration/validate_live_capture.py" \
+  --oracle "$D2B_ORACLE" \
+  fixtures/capture/synthetic-live-capture.json
 ~~~
+
+Set these variables to the actual repository locations when the local layout
+differs from the defaults.
 
 It passed with 2 data frames/2 samples and `stream_id` 7.
 

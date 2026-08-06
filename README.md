@@ -8,7 +8,7 @@ claim physical-device validation.
 ## Run locally
 
 ~~~
-cd /home/yu-ichirou/Dev/Device-to-Browser-Viewer
+cd "$HOME/Dev/Device-to-Browser-Viewer"
 python3 tools/serve.py
 ~~~
 
@@ -27,11 +27,16 @@ and rejects path traversal.
 Run the DOM-free automated tests:
 
 ~~~
+D2B_ORACLE="${D2B_ORACLE:-$HOME/Dev/Device-to-Browser-Data-Streaming}"
+VAMETER_D2B_WORKTREE="${VAMETER_D2B_WORKTREE:-$HOME/Dev/worktrees/VAMeter-Edu/d2b-vi-planA-live}"
+
 node --test tests/node-self-tests.mjs
 node tests/node-self-tests.mjs
 python3 -m py_compile tools/serve.py
-python3 /home/yu-ichirou/Dev/worktrees/VAMeter-Edu/d2b-vi-planA-live/tests/d2b_vi_integration/validate_live_capture.py \
-  --oracle /home/yu-ichirou/Dev/Device-to-Browser-Data-Streaming fixtures/capture/synthetic-live-capture.json
+python3 \
+  "$VAMETER_D2B_WORKTREE/tests/d2b_vi_integration/validate_live_capture.py" \
+  --oracle "$D2B_ORACLE" \
+  fixtures/capture/synthetic-live-capture.json
 ~~~
 
 The Node test file contains 16 named semantic checks, including S1–S7 scenario
@@ -57,8 +62,7 @@ uploads, cloud calls, or build output.
 
 ## Primary-session validation evidence
 
-The final local project path was
-`/home/yu-ichirou/Dev/Device-to-Browser-Viewer`; it was served with
+The final local project was tested from the repository root and served with
 `python3 tools/serve.py`. The index was checked at
 <http://127.0.0.1:8080/> and the viewer self-tests at
 <http://127.0.0.1:8080/tests/>. Server smoke checks returned index `200 text/html`,
@@ -85,9 +89,17 @@ Viewer checks passed as follows:
 The authoritative VAMeter fixture check was run with:
 
 ~~~sh
-python3 /home/yu-ichirou/Dev/worktrees/VAMeter-Edu/d2b-vi-planA-live/tests/d2b_vi_integration/validate_live_capture.py \
-  --oracle /home/yu-ichirou/Dev/Device-to-Browser-Data-Streaming fixtures/capture/synthetic-live-capture.json
+D2B_ORACLE="${D2B_ORACLE:-$HOME/Dev/Device-to-Browser-Data-Streaming}"
+VAMETER_D2B_WORKTREE="${VAMETER_D2B_WORKTREE:-$HOME/Dev/worktrees/VAMeter-Edu/d2b-vi-planA-live}"
+
+python3 \
+  "$VAMETER_D2B_WORKTREE/tests/d2b_vi_integration/validate_live_capture.py" \
+  --oracle "$D2B_ORACLE" \
+  fixtures/capture/synthetic-live-capture.json
 ~~~
+
+Set these variables to the actual repository locations when the local layout
+differs from the defaults.
 
 It passed with 2 data frames/2 samples and `stream_id` 7. Parser, golden-vector,
 and license provenance byte comparisons all exited 0 with no diff. Short
@@ -224,12 +236,14 @@ edits, update this provenance text and src/protocol/README.md, review
 compatibility, and rerun all tests. Compare this baseline with:
 
 ~~~sh
+D2B_ORACLE="${D2B_ORACLE:-$HOME/Dev/Device-to-Browser-Data-Streaming}"
+
 diff -qr src/protocol/d2b-reference \
-  /home/yu-ichirou/Dev/Device-to-Browser-Data-Streaming/reference/browser/src
+  "$D2B_ORACLE/reference/browser/src"
 cmp fixtures/golden/vi-frames.json \
-  /home/yu-ichirou/Dev/Device-to-Browser-Data-Streaming/test-vectors/vi-frames.json
+  "$D2B_ORACLE/test-vectors/vi-frames.json"
 cmp LICENSES/Apache-2.0.txt \
-  /home/yu-ichirou/Dev/Device-to-Browser-Data-Streaming/LICENSE
+  "$D2B_ORACLE/LICENSE"
 ~~~
 
 ## Limitations / explicitly not performed

@@ -3,6 +3,7 @@ import { StreamModel } from "../src/model/stream-model.js";
 import { SessionAdapter } from "../src/protocol/session-adapter.js";
 import { relativeDeviceSeconds } from "../src/render/scale.js";
 import { CaptureReplaySource, parseLiveCapture } from "../src/sources/capture-replay-source.js";
+import { liveActionAvailability } from "../src/ui/action-availability.js";
 import {
   SyntheticSource, buildSyntheticPlan, makeHelloText, makeWelcomeText, makeStartText, makeStartedText,
   makeStoppedText, makeStreamEndFrame, makeViFrame,
@@ -114,17 +115,47 @@ const tests = [
   ["new stream hard boundary", () => {
     const { model, adapter } = readyAdapter();
     startVi(adapter, 1); assert(firstFrame(adapter));
+    const oldSegmentId = model.latest.segment_id;
     assert(adapter.handleBinary(makeStreamEndFrame({ streamId: 1, sequence: 9_007_199_254_742_001n, timestampUs: 1_040_000n })));
     assert(adapter.handleControl({ direction: "server_to_client", text: makeStoppedText(1) }));
     startVi(adapter, 2);
     assert(adapter.handleBinary(makeViFrame({ streamId: 2, sequence: 9_007_199_254_742_000n, timestampUs: 2_000_000n, flags: 1, voltage: 3.3, current: 0.1 })));
     const records = model.recordSnapshot();
-    assert(records[0].segment_id !== records[1].segment_id, "segments joined");
+    equal(records.length, 1); equal(records[0].stream_id, 2);
+    assert(records[0].segment_id !== oldSegmentId, "new stream reused the old display segment");
+  }],
+  ["reconnect timestamp reset isolates the current viewport", () => {
+    const { model, adapter } = readyAdapter();
+    startVi(adapter, 1);
+    assert(firstFrame(adapter, { timestampUs: 80_000_000n }));
+    assert(adapter.handleBinary(makeStreamEndFrame({ streamId: 1, sequence: BASE_SEQUENCE + 1n, timestampUs: 80_040_000n })));
+    assert(adapter.handleControl({ direction: "server_to_client", text: makeStoppedText(1) }));
+    startVi(adapter, 2);
+    assert(adapter.handleBinary(makeViFrame({
+      streamId: 2,
+      sequence: BASE_SEQUENCE + 100n,
+      timestampUs: 0n,
+      flags: 1,
+      voltage: 3.3,
+      current: 0.1,
+    })));
+    const records = model.recordSnapshot();
+    equal(records.length, 1); equal(records[0].stream_id, 2); equal(records[0].timestamp_us, 0n);
+    assert(model.markerSnapshot().every((marker) => marker.stream_id === 2), "old marker retained after reconnect");
   }],
   ["invalid channel is null", () => {
     const { model, adapter } = readyAdapter();
     startVi(adapter); assert(firstFrame(adapter, { validMask: 2, voltage: 0 }));
     equal(model.latest.voltage_V, null); equal(model.summary().invalidVoltageCount, 1);
+  }],
+  ["invalid channel transition breaks its geometry", () => {
+    const { model, adapter } = readyAdapter();
+    startVi(adapter); assert(firstFrame(adapter));
+    assert(adapter.handleBinary(makeViFrame({ streamId: 1, sequence: BASE_SEQUENCE + 1n, timestampUs: 1_040_000n, validMask: 2, voltage: 0, current: 0.1 })));
+    assert(adapter.handleBinary(makeViFrame({ streamId: 1, sequence: BASE_SEQUENCE + 2n, timestampUs: 1_080_000n, voltage: 3.3, current: 0.1 })));
+    const records = model.recordSnapshot();
+    equal(records[1].voltage_V, null); equal(records[1].voltage_segment_id, null);
+    assert(records[0].voltage_segment_id !== records[2].voltage_segment_id, "valid samples bridged across invalid voltage");
   }],
   ["exact relative timestamp conversion", () => {
     const origin = 18_446_744_073_709_000_000n;
@@ -169,6 +200,14 @@ const tests = [
     const mismatch = JSON.parse(makeStartedText(1, "other-stream"));
     equal(adapter.handleControl({ direction: "server_to_client", text: JSON.stringify(mismatch) }), false);
     equal(adapter.controlState, "READY");
+  }],
+  ["live Start action disables while its reservation is pending", () => {
+    const open = { state: "open" };
+    const ready = { controlState: "READY", startPending: false, stopPending: false, streamId: null };
+    const pending = { ...ready, startPending: true };
+    equal(liveActionAvailability(ready, open).start, true);
+    equal(liveActionAvailability(pending, open).start, false);
+    equal(liveActionAvailability(pending, open).stop, false);
   }],
   ["display eviction remains distinct from device gap", () => {
     const { model, adapter } = readyAdapter({ displayWindowSeconds: 1 });
@@ -222,7 +261,7 @@ const tests = [
 
     const reconnect = driveSyntheticScenario("reconnect");
     equal(reconnect.model.summary().sampleCount, 250); equal(reconnect.model.summary().segmentCount, 2);
-    equal([...new Set(reconnect.model.recordSnapshot().map((record) => record.stream_id))].join(","), "1,2");
+    equal([...new Set(reconnect.model.recordSnapshot().map((record) => record.stream_id))].join(","), "2");
 
     const invalid = driveSyntheticScenario("invalid-frame");
     equal(invalid.model.summary().sampleCount, 250); equal(invalid.model.summary().sequenceGapCount, 0);

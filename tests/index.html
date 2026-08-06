@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:,">
+    <title>Device-to-Browser Viewer self-tests</title>
+    <style>
+      body { margin: 2rem; background: #101820; color: #e8f0fb; font: 16px/1.5 system-ui, sans-serif; }
+      code, output { font-family: ui-monospace, monospace; }
+      #totals { padding: .8rem; border: 1px solid #48627b; border-radius: .5rem; }
+      li.pass { color: #86e6a8; } li.fail { color: #ff9999; }
+    </style>
+  </head>
+  <body>
+    <h1>Viewer browser self-tests</h1>
+    <p id="totals" data-machine-readable="viewer-self-tests">TOTAL: pending</p>
+    <ol id="results" aria-live="polite"></ol>
+    <script type="module" src="viewer-self-tests.js"></script>
+  </body>
+</html>

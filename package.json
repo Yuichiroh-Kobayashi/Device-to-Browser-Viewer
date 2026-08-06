@@ -1,0 +1,6 @@
+{
+  "name": "device-to-browser-viewer-prototype",
+  "private": true,
+  "type": "module",
+  "description": "Dependency-free static d2b-stream/0.1 V/I viewer prototype; no npm dependencies."
+}

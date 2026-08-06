@@ -1,0 +1,417 @@
+{
+  "format": "d2b-stream-test-vectors/0.1",
+  "protocol": "d2b-stream",
+  "version": "0.1",
+  "vectors": [
+    {
+      "name": "vi_first_frame",
+      "purpose": "Decode the first V/I frame with the 32-byte envelope.",
+      "frame_hex": "44324253000102010b00000001000000640000000000000040420f0000000000000000000300000000005040000000be",
+      "expected_valid": true,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        }
+      },
+      "expected_decoded": {
+        "magic": "D2BS",
+        "sample_count": 1,
+        "payload_length": 16,
+        "stream_start": true,
+        "first_valid_mask": 3,
+        "first_voltage": 3.25,
+        "first_current": -0.125,
+        "gap_samples": 0
+      }
+    },
+    {
+      "name": "vi_continuous_frame",
+      "purpose": "Decode a continuous multi-record V/I frame.",
+      "frame_hex": "44324253000102000b000000020000006600000000000000104a0f0000000000000000000300000000005040cdcccc3de803000003000000cdcc4c40cdcc4c3e",
+      "expected_valid": true,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        },
+        "previous_first_sample_sequence": 100,
+        "previous_sample_count": 2,
+        "previous_first_timestamp_us": 1000000,
+        "previous_last_timestamp_us": 1001000
+      },
+      "expected_decoded": {
+        "sample_count": 2,
+        "first_sample_sequence": 102,
+        "last_delta_us": 1000,
+        "gap_samples": 0
+      }
+    },
+    {
+      "name": "vi_producer_overflow",
+      "purpose": "Accept a producer-overflow discontinuity without renumbering.",
+      "frame_hex": "443242530001020c0b000000010000006900000000000000c8550f0000000000000000000300000000005040000000be",
+      "expected_valid": true,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        },
+        "previous_first_sample_sequence": 100,
+        "previous_sample_count": 2,
+        "previous_first_timestamp_us": 1000000,
+        "previous_last_timestamp_us": 1001000
+      },
+      "expected_decoded": {
+        "gap_samples": 3,
+        "discontinuity": true,
+        "producer_overflow": true
+      }
+    },
+    {
+      "name": "vi_output_queue_gap",
+      "purpose": "Preserve a post-acquisition queue gap.",
+      "frame_hex": "44324253000102140b000000010000006900000000000000c8550f0000000000000000000300000000005040000000be",
+      "expected_valid": true,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        },
+        "previous_first_sample_sequence": 100,
+        "previous_sample_count": 2,
+        "previous_first_timestamp_us": 1000000,
+        "previous_last_timestamp_us": 1001000
+      },
+      "expected_decoded": {
+        "gap_samples": 3,
+        "discontinuity": true,
+        "output_queue_drop": true
+      }
+    },
+    {
+      "name": "vi_timebase_reset",
+      "purpose": "Accept a signaled timebase reset only on a new session.",
+      "frame_hex": "44324253000102450b000000010000000000000000000000f401000000000000000000000300000000005040000000be",
+      "expected_valid": true,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        }
+      },
+      "expected_decoded": {
+        "stream_start": true,
+        "discontinuity": true,
+        "timebase_reset": true
+      }
+    },
+    {
+      "name": "vi_wrong_magic",
+      "purpose": "Reject wrong magic.",
+      "frame_hex": "58324253000102010b00000001000000640000000000000040420f0000000000000000000300000000005040000000be",
+      "expected_valid": false,
+      "expected_error": "bad_magic"
+    },
+    {
+      "name": "vi_unsupported_major",
+      "purpose": "Reject an unsupported binary major version.",
+      "frame_hex": "44324253010102010b00000001000000640000000000000040420f0000000000000000000300000000005040000000be",
+      "expected_valid": false,
+      "expected_error": "version_mismatch"
+    },
+    {
+      "name": "vi_reserved_flag",
+      "purpose": "Reject the reserved flag bit.",
+      "frame_hex": "44324253000102810b00000001000000640000000000000040420f0000000000000000000300000000005040000000be",
+      "expected_valid": false,
+      "expected_error": "reserved_flag_set"
+    },
+    {
+      "name": "vi_missing_stream_start",
+      "purpose": "Require STREAM_START on a first data frame.",
+      "frame_hex": "44324253000102000b00000001000000640000000000000040420f0000000000000000000300000000005040000000be",
+      "expected_valid": false,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        }
+      },
+      "expected_error": "missing_stream_start"
+    },
+    {
+      "name": "vi_repeated_stream_start",
+      "purpose": "Reject STREAM_START on a later frame.",
+      "frame_hex": "44324253000102010b000000010000006600000000000000104a0f0000000000000000000300000000005040000000be",
+      "expected_valid": false,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        },
+        "previous_first_sample_sequence": 100,
+        "previous_sample_count": 2,
+        "previous_first_timestamp_us": 1000000,
+        "previous_last_timestamp_us": 1001000
+      },
+      "expected_error": "unexpected_stream_start"
+    },
+    {
+      "name": "vi_sample_count_zero",
+      "purpose": "Reject zero sample count on data frames.",
+      "frame_hex": "44324253000102010b00000000000000640000000000000040420f0000000000",
+      "expected_valid": false,
+      "expected_error": "sample_count_zero"
+    },
+    {
+      "name": "vi_payload_too_short",
+      "purpose": "Reject a short V/I payload.",
+      "frame_hex": "44324253000102010b00000001000000640000000000000040420f0000000000000000000300000000005040000000",
+      "expected_valid": false,
+      "expected_error": "vi_payload_length_mismatch"
+    },
+    {
+      "name": "vi_payload_too_long",
+      "purpose": "Reject an extended V/I payload.",
+      "frame_hex": "44324253000102010b00000001000000640000000000000040420f0000000000000000000300000000005040000000be00",
+      "expected_valid": false,
+      "expected_error": "vi_payload_length_mismatch"
+    },
+    {
+      "name": "vi_partial_record",
+      "purpose": "Reject a partial V/I record.",
+      "frame_hex": "44324253000102010b00000001000000640000000000000040420f00000000000000000003000000",
+      "expected_valid": false,
+      "expected_error": "vi_payload_length_mismatch"
+    },
+    {
+      "name": "vi_sequence_overflow",
+      "purpose": "Reject first sequence plus count overflow.",
+      "frame_hex": "44324253000102010b00000002000000ffffffffffffffff40420f0000000000000000000300000000005040cdcccc3de803000003000000cdcc4c40cdcc4c3e",
+      "expected_valid": false,
+      "expected_error": "sequence_overflow"
+    },
+    {
+      "name": "vi_timestamp_overflow",
+      "purpose": "Reject timestamp plus delta overflow.",
+      "frame_hex": "44324253000102010b000000020000006400000000000000ffffffffffffffff00000000030000000000803f0000803f01000000030000000000803f0000803f",
+      "expected_valid": false,
+      "expected_error": "timestamp_overflow"
+    },
+    {
+      "name": "vi_stream_id_mismatch",
+      "purpose": "Reject a frame from another stream.",
+      "frame_hex": "44324253000102010c00000001000000640000000000000040420f0000000000000000000300000000005040000000be",
+      "expected_valid": false,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        }
+      },
+      "expected_error": "stream_id_mismatch"
+    },
+    {
+      "name": "vi_sequence_regression",
+      "purpose": "Reject sequence regression.",
+      "frame_hex": "44324253000102000b000000010000006500000000000000104a0f0000000000000000000300000000005040000000be",
+      "expected_valid": false,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        },
+        "previous_first_sample_sequence": 100,
+        "previous_sample_count": 2,
+        "previous_first_timestamp_us": 1000000,
+        "previous_last_timestamp_us": 1001000
+      },
+      "expected_error": "sequence_regression"
+    },
+    {
+      "name": "vi_unexplained_sequence_gap",
+      "purpose": "Reject a sequence gap without DISCONTINUITY.",
+      "frame_hex": "44324253000102000b000000010000006900000000000000c8550f0000000000000000000300000000005040000000be",
+      "expected_valid": false,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        },
+        "previous_first_sample_sequence": 100,
+        "previous_sample_count": 2,
+        "previous_first_timestamp_us": 1000000,
+        "previous_last_timestamp_us": 1001000
+      },
+      "expected_error": "missing_discontinuity_flag"
+    },
+    {
+      "name": "vi_malformed_valid_mask",
+      "purpose": "Reject unknown validity bits.",
+      "frame_hex": "44324253000102010b00000001000000640000000000000040420f000000000000000000040000000000803f0000803f",
+      "expected_valid": false,
+      "expected_error": "vi_invalid_valid_mask"
+    },
+    {
+      "name": "vi_invalid_delta_order",
+      "purpose": "Reject decreasing delta_us values.",
+      "frame_hex": "44324253000102010b00000003000000640000000000000040420f000000000000000000030000000000803f0000803f02000000030000000000803f0000803f01000000030000000000803f0000803f",
+      "expected_valid": false,
+      "expected_error": "vi_delta_regression"
+    },
+    {
+      "name": "vi_first_delta_nonzero",
+      "purpose": "Require zero delta on the first record.",
+      "frame_hex": "44324253000102010b00000001000000640000000000000040420f000000000001000000030000000000803f0000803f",
+      "expected_valid": false,
+      "expected_error": "vi_first_delta_nonzero"
+    },
+    {
+      "name": "vi_nonfinite_valid_value",
+      "purpose": "Reject a non-finite value marked valid.",
+      "frame_hex": "44324253000102010b00000001000000640000000000000040420f000000000000000000030000000000807f0000803f",
+      "expected_valid": false,
+      "expected_error": "vi_nonfinite_valid_value"
+    },
+    {
+      "name": "vi_cause_without_discontinuity",
+      "purpose": "Require DISCONTINUITY with producer overflow.",
+      "frame_hex": "44324253000102090b00000001000000640000000000000040420f0000000000000000000300000000005040000000be",
+      "expected_valid": false,
+      "expected_error": "missing_discontinuity_flag"
+    },
+    {
+      "name": "vi_stream_end",
+      "purpose": "Accept a payload-free stream end marker.",
+      "frame_hex": "44324253000110020b000000000000006600000000000000f84d0f0000000000",
+      "expected_valid": true,
+      "context": {
+        "negotiated_version": "0.1",
+        "session_state": "STREAMING",
+        "maximum_binary_frame_size": 65536,
+        "stream_id": 11,
+        "profile": "vi-measurement",
+        "parameters": {
+          "sample_format": "vi-f32le",
+          "channel_count": 2,
+          "channel_mask": 3,
+          "sample_rate": {
+            "numerator": 0,
+            "denominator": 0
+          }
+        },
+        "previous_first_sample_sequence": 100,
+        "previous_sample_count": 2,
+        "previous_first_timestamp_us": 1000000,
+        "previous_last_timestamp_us": 1001000
+      },
+      "expected_decoded": {
+        "stream_end": true,
+        "sample_count": 0,
+        "payload_length": 0
+      }
+    }
+  ],
+  "profile": "vi-measurement"
+}

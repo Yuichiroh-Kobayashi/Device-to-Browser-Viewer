@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Dependency-free d2b-stream/0.1 V/I device-time viewer prototype.">
+    <title>Device-to-Browser V/I Viewer</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="styles/app.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">d2b-stream/0.1 • vi-measurement</p>
+          <h1>Device-to-Browser Viewer</h1>
+          <p class="subtitle">Exact device timestamps and sequences; gaps and invalidity remain visible.</p>
+        </div>
+        <p class="validation-note">Live mode is implemented, <strong>NOT PHYSICALLY VALIDATED</strong>.</p>
+      </header>
+
+      <section class="panel controls" aria-labelledby="controls-title">
+        <h2 id="controls-title">Connection</h2>
+        <div class="control-grid">
+          <label>Source
+            <select id="source-select">
+              <option value="synthetic">Synthetic</option>
+              <option value="capture">Capture replay</option>
+              <option value="websocket">Live WebSocket</option>
+            </select>
+          </label>
+          <label class="synthetic-only">Scenario
+            <select id="scenario-select"></select>
+          </label>
+          <label class="capture-only is-hidden">Capture file
+            <input id="capture-file" type="file" accept="application/json,.json">
+          </label>
+          <label class="live-only is-hidden">WebSocket endpoint
+            <input id="endpoint-input" type="url" spellcheck="false">
+          </label>
+          <label>Replay/preview speed
+            <select id="speed-select">
+              <option value="0.25">0.25×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+              <option value="fast">As fast as possible</option>
+            </select>
+          </label>
+          <label>Device-time display window
+            <select id="window-select">
+              <option value="10">10 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="60" selected>60 seconds</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions" aria-label="Source lifecycle controls">
+          <button id="open-button" type="button">Open</button>
+          <button id="start-button" type="button" class="primary">Start</button>
+          <button id="stop-button" type="button">Stop</button>
+          <button id="close-button" type="button">Close</button>
+        </div>
+        <p class="hint">Synthetic preview runs approximately 10× faster than device time. Capture <code>received_ms</code> schedules replay only; canvas X positions always derive from decoded device timestamps.</p>
+      </section>
+
+      <section class="status-layout" aria-label="Viewer status">
+        <article class="panel status-panel">
+          <h2>Protocol and bounded state</h2>
+          <dl id="status-grid" class="status-grid"></dl>
+        </article>
+        <article class="panel current-panel">
+          <h2>Latest decoded record</h2>
+          <div class="current-values">
+            <div><span>Voltage</span><strong id="voltage-value">—</strong><small>V</small></div>
+            <div><span>Current</span><strong id="current-value">—</strong><small>A</small></div>
+          </div>
+          <dl id="latest-grid" class="latest-grid"></dl>
+        </article>
+      </section>
+
+      <section class="waveforms" aria-label="Device-time waveforms">
+        <article class="panel waveform-panel">
+          <canvas id="voltage-canvas" aria-label="Voltage versus exact device time"></canvas>
+        </article>
+        <article class="panel waveform-panel">
+          <canvas id="current-canvas" aria-label="Current versus exact device time"></canvas>
+        </article>
+      </section>
+
+      <details class="panel diagnostics-panel">
+        <summary>Bounded protocol diagnostics (<span id="diagnostic-count">0</span>/100)</summary>
+        <ol id="diagnostics-list"></ol>
+      </details>
+    </main>
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>

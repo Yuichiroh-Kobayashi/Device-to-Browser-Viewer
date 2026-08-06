@@ -159,7 +159,7 @@ function updateSourceSpecificControls() {
 }
 
 async function withUiError(action) {
-  try { await action(); } catch (error) { adapter.handleError(error); afterActivity(); }
+  try { await action(); } catch (error) { adapter.handleError(error); }
 }
 
 controls.source.addEventListener("change", () => { void withUiError(replaceSource); });
@@ -171,8 +171,12 @@ controls.speed.addEventListener("change", () => {
   if (source?.setSpeed) source.setSpeed(sourceSpeed());
 });
 controls.window.addEventListener("change", () => {
-  try { model.setDisplayWindowSeconds(Number(controls.window.value)); } catch (error) { adapter.handleError(error); }
-  afterActivity();
+  try {
+    model.setDisplayWindowSeconds(Number(controls.window.value));
+    afterActivity();
+  } catch (error) {
+    adapter.handleError(error);
+  }
 });
 controls.capture.addEventListener("change", () => {
   void withUiError(async () => {
@@ -210,11 +214,9 @@ controls.close.addEventListener("click", () => { void withUiError(() => source.c
 
 window.addEventListener("error", (event) => {
   adapter.handleError(event.error || event.message || "window error");
-  afterActivity();
 });
 window.addEventListener("unhandledrejection", (event) => {
   adapter.handleError(event.reason || "unhandled rejection");
-  afterActivity();
 });
 
 Object.defineProperty(window, "__viewerDiagnostics", {

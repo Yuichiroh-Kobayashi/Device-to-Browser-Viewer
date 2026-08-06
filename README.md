@@ -19,8 +19,8 @@ http://127.0.0.1:8080/?source=synthetic&scenario=stable&autostart=1
 ~~~
 
 The browser self-test page is <http://127.0.0.1:8080/tests/>. It visibly emits
-machine-readable TOTAL, PASS, and FAIL values; the primary validation pass ran
-it in both Chrome and Edge (TOTAL 14, PASS 14, FAIL 0). The static server binds
+machine-readable TOTAL, PASS, and FAIL values; the current validation pass ran
+it in both Chrome and Edge (TOTAL 17, PASS 17, FAIL 0). The static server binds
 only to 127.0.0.1 by default, does not auto-open a browser, has no telemetry,
 and rejects path traversal.
 
@@ -32,6 +32,7 @@ VAMETER_D2B_WORKTREE="${VAMETER_D2B_WORKTREE:-$HOME/Dev/worktrees/VAMeter-Edu/d2
 
 node --test tests/node-self-tests.mjs
 node tests/node-self-tests.mjs
+node tests/live-gate-regressions.mjs
 python3 -m py_compile tools/serve.py
 python3 \
   "$VAMETER_D2B_WORKTREE/tests/d2b_vi_integration/validate_live_capture.py" \
@@ -39,11 +40,12 @@ python3 \
   fixtures/capture/synthetic-live-capture.json
 ~~~
 
-The Node test file contains 16 named semantic checks, including S1–S7 scenario
-smoke coverage, exact capture schema validation, orderly stream-end enforcement,
-WebSocket lifecycle races, and a legacy-frame-shape rejection. The external
-validator is the authoritative VAMeter live-capture check; it validates the
-fixture against the copied d2b reference oracle.
+The Node test file contains 30 named semantic checks, including S1–S7 scenario
+smoke coverage, transactional WebSocket controls, active-viewport isolation,
+exact capture schema validation, orderly stream-end enforcement, lifecycle
+races, and a legacy-frame-shape rejection. The external validator performs
+authoritative capture-schema fixture validation backed by the D2B oracle. The
+checked-in capture is synthetic and is not physical VAMeter evidence.
 
 ## Layout
 
@@ -78,15 +80,17 @@ harness at <http://127.0.0.1:8000/reference/browser/> reported Chrome
 Viewer checks passed as follows:
 
 - `node --test tests/node-self-tests.mjs` exited 0; direct
-  `node tests/node-self-tests.mjs` reported 16/16.
-- Browser self-tests at `/tests/` reported TOTAL 14, PASS 14, FAIL 0 in both
+  `node tests/node-self-tests.mjs` reported 30/30. The targeted live-gate suite
+  reported 13/13.
+- Browser self-tests at `/tests/` reported TOTAL 17, PASS 17, FAIL 0 in both
   Chrome and Edge.
 - S1 stable: 250/1; S2 step: 250/1; S3 producer gap: 245/2 (gap 5,
   producer 1); S4 output drop: 247/2 (gap 3, output 1); S5 validity: invalid
-  voltage/current 126/125; S6 reconnect: 250/2; S7 invalid-frame:
+  voltage/current 126/125; S6 reconnect: 250/2 cumulatively with only stream 2
+  retained in the current viewport; S7 invalid-frame:
   `bad_magic` diagnostic, 250 accepted, and no fabricated gap.
 
-The authoritative VAMeter fixture check was run with:
+The oracle-backed synthetic capture validation was run with:
 
 ~~~sh
 D2B_ORACLE="${D2B_ORACLE:-$HOME/Dev/Device-to-Browser-Data-Streaming}"
@@ -172,6 +176,12 @@ origin/security behavior or add a CORS/relay bypass.
 
 **Live mode is implemented, NOT PHYSICALLY VALIDATED. No live-device PASS is
 claimed.**
+
+Before any LAN/iPad exposure, the static server still needs a clean public
+allowlist (including `.git`/dotfile denial), a non-loopback warning, and CSP
+review. Viewer-owned code licensing is `OWNER_DECISION_REQUIRED_BEFORE_RELEASE`;
+the copied parser's Apache-2.0 provenance is unchanged. Long-soak capacity-edge
+and heap-trend checks remain `DEFERRED_BEFORE_SOAK`.
 
 ## Semantics and bounds
 

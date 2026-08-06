@@ -23,14 +23,15 @@ The reference browser harness at
 cd "$HOME/Dev/Device-to-Browser-Viewer"
 node --test tests/node-self-tests.mjs
 node tests/node-self-tests.mjs
+node tests/live-gate-regressions.mjs
 python3 -m py_compile tools/serve.py
 ~~~
 
 `node --test tests/node-self-tests.mjs` exited 0. Direct
-`node tests/node-self-tests.mjs` reported 16/16 named semantic checks. The
-`py_compile` check also exited 0.
+`node tests/node-self-tests.mjs` reported 30/30 named semantic checks. The
+targeted live-gate suite reported 13/13. The `py_compile` check also exited 0.
 
-Browser self-tests at `/tests/` reported TOTAL 14, PASS 14, FAIL 0 in both
+Browser self-tests at `/tests/` reported TOTAL 17, PASS 17, FAIL 0 in both
 Chrome and Edge. The scenario observations were:
 
 - S1 stable: 250/1.
@@ -38,11 +39,13 @@ Chrome and Edge. The scenario observations were:
 - S3 producer gap: 245/2, with gap 5 and producer 1.
 - S4 output drop: 247/2, with gap 3 and output 1.
 - S5 validity: invalid voltage/current 126/125.
-- S6 reconnect: 250/2.
+- S6 reconnect: 250/2 cumulatively, with only stream 2 retained in the current
+  viewport.
 - S7 invalid-frame: `bad_magic` diagnostic, 250 accepted, and no fabricated gap.
 
-The authoritative VAMeter fixture validator was run as follows from the final
-project root:
+The authoritative capture-schema fixture validation was run as follows from
+the final project root. It is oracle-backed synthetic capture validation, not
+real VAMeter physical evidence:
 
 ~~~sh
 D2B_ORACLE="${D2B_ORACLE:-$HOME/Dev/Device-to-Browser-Data-Streaming}"
@@ -75,3 +78,8 @@ The viewer has no external packages, CDN dependencies, or telemetry.
 Live WebSocket mode is implemented but **NOT PHYSICALLY VALIDATED**. Live
 VAMeter/iPad testing, long soak, CSV/export, device asset serving, GitHub Pages,
 and a production release were not performed.
+
+Static-server LAN hardening (dotfile/`.git` denial, a clean public allowlist,
+non-loopback warning, and CSP review) remains deferred. Viewer-owned code
+licensing is `OWNER_DECISION_REQUIRED_BEFORE_RELEASE`. Exact capacity boundaries
+and heap-trend observation remain `DEFERRED_BEFORE_SOAK`.

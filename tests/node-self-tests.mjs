@@ -15,6 +15,8 @@ import {
 
 const BASE_SEQUENCE = 9_007_199_254_742_000n;
 const SAMPLE_PERIOD_US = 40_000n;
+const LIVE_STREAM = "live-vi";
+const LIVE_SUPPORTED_STREAMS = Object.freeze([LIVE_STREAM]);
 
 function readyAdapter({ capacity = 4096, displayWindowSeconds = 60 } = {}) {
   const model = new StreamModel({ capacity, displayWindowSeconds });
@@ -361,9 +363,74 @@ test("synthetic source start/stop lifecycle is bounded and closes cleanly", asyn
   assert.equal(source.state, "closed");
 });
 
+test("WebSocket stream selection is explicit, allowlisted, and wire-safe", { concurrency: false }, async () => {
+  await withControlledWebSocket(async () => {
+    const endpoint = "ws://example.test/d2b/v0/stream";
+    const invalidSelections = [
+      { supportedStreams: LIVE_SUPPORTED_STREAMS },
+      { stream: "   ", supportedStreams: LIVE_SUPPORTED_STREAMS },
+      { stream: " live-vi ", supportedStreams: LIVE_SUPPORTED_STREAMS },
+      { stream: "unknown-stream", supportedStreams: LIVE_SUPPORTED_STREAMS },
+      { stream: LIVE_STREAM, supportedStreams: [] },
+      { stream: "not wire safe", supportedStreams: ["not wire safe"] },
+    ];
+    for (const options of invalidSelections) {
+      assert.throws(() => new WebSocketSource({ endpoint, ...options }), /stream|supportedStreams/i);
+      assert.equal(ControlledWebSocket.instances.length, 0, "invalid stream selection must not construct a WebSocket");
+    }
+
+    const source = new WebSocketSource({ endpoint, stream: LIVE_STREAM, supportedStreams: LIVE_SUPPORTED_STREAMS });
+    const opening = source.open();
+    const socket = ControlledWebSocket.instances[0];
+    socket.open();
+    await opening;
+    await source.start();
+    assert.deepEqual(JSON.parse(socket.sent.at(-1)), {
+      type: "start_stream",
+      stream: LIVE_STREAM,
+      profile: "vi-measurement",
+      parameters: DEFAULT_VI_PARAMETERS,
+    });
+
+    const closing = source.close();
+    socket.finishClose();
+    await closing;
+  });
+});
+
+test("checked-in VAMeter fixture exposes and requests the exact live V/I stream", async () => {
+  const capture = JSON.parse(await readFile(new URL("../fixtures/capture/synthetic-live-capture.json", import.meta.url), "utf8"));
+  const capabilities = JSON.parse(capture.capabilities_text);
+  const liveStream = capabilities.streams.find((stream) => stream.id === LIVE_STREAM);
+  assert.ok(liveStream, "fixture must advertise live-vi");
+  const viProfile = liveStream.profiles.find((profile) => profile.profile === "vi-measurement");
+  assert.ok(viProfile, "live-vi must advertise vi-measurement");
+  assert.deepEqual(viProfile.parameter_sets, [DEFAULT_VI_PARAMETERS]);
+
+  const start = JSON.parse(capture.controls.find((control) => {
+    const message = JSON.parse(control.text);
+    return control.direction === "client_to_server" && message.type === "start_stream";
+  }).text);
+  assert.deepEqual(start, {
+    type: "start_stream",
+    stream: LIVE_STREAM,
+    profile: "vi-measurement",
+    parameters: DEFAULT_VI_PARAMETERS,
+  });
+});
+
+test("application live mode explicitly constructs the captured live stream", async () => {
+  const appText = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(appText, /new WebSocketSource\(\{\s*endpoint: controls\.endpoint\.value,\s*stream: "live-vi",\s*supportedStreams: \["live-vi"\],\s*\}\)/);
+});
+
 test("WebSocket close owns its callbacks through awaited reopen", { concurrency: false }, async () => {
   await withControlledWebSocket(async () => {
-    const source = new WebSocketSource({ endpoint: "ws://example.test/d2b/v0/stream" });
+    const source = new WebSocketSource({
+      endpoint: "ws://example.test/d2b/v0/stream",
+      stream: LIVE_STREAM,
+      supportedStreams: LIVE_SUPPORTED_STREAMS,
+    });
     const statuses = [];
     const controls = [];
     const errors = [];
@@ -414,7 +481,7 @@ test("WebSocket close owns its callbacks through awaited reopen", { concurrency:
     assert.equal(statuses.at(-1), "open");
 
     await source.start();
-    second.message(JSON.stringify({ type: "stream_started", stream: "measurement-0", profile: "vi-measurement", parameters: DEFAULT_VI_PARAMETERS, stream_id: 22 }));
+    second.message(JSON.stringify({ type: "stream_started", stream: LIVE_STREAM, profile: "vi-measurement", parameters: DEFAULT_VI_PARAMETERS, stream_id: 22 }));
     await source.stop();
     assert.equal(JSON.parse(second.sent.at(-2)).type, "start_stream");
     assert.equal(JSON.parse(second.sent.at(-1)).stream_id, 22);
@@ -428,7 +495,11 @@ test("WebSocket close owns its callbacks through awaited reopen", { concurrency:
 });
 
 test("WebSocket synchronous construction and close failures clear pending attempts", { concurrency: false }, async () => {
-  const source = new WebSocketSource({ endpoint: "ws://example.test/d2b/v0/stream" });
+  const source = new WebSocketSource({
+    endpoint: "ws://example.test/d2b/v0/stream",
+    stream: LIVE_STREAM,
+    supportedStreams: LIVE_SUPPORTED_STREAMS,
+  });
   class ThrowingWebSocket {
     constructor() { throw new Error("mock constructor failure"); }
   }

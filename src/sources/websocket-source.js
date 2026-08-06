@@ -1,5 +1,7 @@
 import { DataSource } from "./data-source.js";
 import { DEFAULT_VI_PARAMETERS, makeHelloText } from "./synthetic-source.js";
+import { CONTROL_LIMIT } from "../protocol/d2b-reference/protocol-constants.js";
+import { IDENTIFIER_RE } from "../protocol/d2b-reference/value-validators.js";
 
 function deferred() {
   let resolve;
@@ -9,6 +11,36 @@ function deferred() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject, settled: false, socket: null, generation: 0 };
+}
+
+function startStreamControlText(stream) {
+  return JSON.stringify({
+    type: "start_stream",
+    stream,
+    profile: "vi-measurement",
+    parameters: DEFAULT_VI_PARAMETERS,
+  });
+}
+
+function requireWireSafeStream(stream, field) {
+  if (typeof stream !== "string" || stream.length === 0 || stream !== stream.trim()) {
+    throw new TypeError(`${field} must be a trimmed, nonempty stream identifier`);
+  }
+  if (!IDENTIFIER_RE.test(stream)) throw new TypeError(`${field} is not wire-safe`);
+  if (new TextEncoder().encode(startStreamControlText(stream)).byteLength > CONTROL_LIMIT) {
+    throw new RangeError(`${field} exceeds the control message limit`);
+  }
+  return stream;
+}
+
+function selectSupportedStream(stream, supportedStreams) {
+  if (!Array.isArray(supportedStreams) || supportedStreams.length === 0) {
+    throw new TypeError("supportedStreams must be a nonempty array");
+  }
+  const selected = requireWireSafeStream(stream, "stream");
+  for (const candidate of supportedStreams) requireWireSafeStream(candidate, "supportedStreams entry");
+  if (!supportedStreams.includes(selected)) throw new RangeError("stream is not in supportedStreams");
+  return Object.freeze({ stream: selected, supportedStreams: Object.freeze([...supportedStreams]) });
 }
 
 export function defaultWebSocketEndpoint(locationLike = globalThis.location) {
@@ -23,10 +55,12 @@ export function defaultWebSocketEndpoint(locationLike = globalThis.location) {
  * origin bypass, CORS workaround, or authentication shortcut.
  */
 export class WebSocketSource extends DataSource {
-  constructor({ endpoint = defaultWebSocketEndpoint(), stream = "measurement-0" } = {}) {
+  constructor({ endpoint = defaultWebSocketEndpoint(), stream, supportedStreams } = {}) {
+    const selection = selectSupportedStream(stream, supportedStreams);
     super("websocket");
     this.endpoint = endpoint;
-    this.stream = stream;
+    this.stream = selection.stream;
+    this.supportedStreams = selection.supportedStreams;
     this.socket = null;
     this._generation = 0;
     this._socketGeneration = 0;
@@ -103,12 +137,7 @@ export class WebSocketSource extends DataSource {
     if (!this.socket || !WebSocketClass || this.socket.readyState !== WebSocketClass.OPEN || this._isClosingSocket(this.socket, this._socketGeneration)) {
       throw new Error("open the WebSocket and await welcome before starting");
     }
-    this._sendControl(JSON.stringify({
-      type: "start_stream",
-      stream: this.stream,
-      profile: "vi-measurement",
-      parameters: DEFAULT_VI_PARAMETERS,
-    }));
+    this._sendControl(startStreamControlText(this.stream));
   }
 
   async stop() {

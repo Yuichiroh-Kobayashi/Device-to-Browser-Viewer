@@ -136,7 +136,11 @@ async function replaceSource() {
   } else if (kind === "capture") {
     source = new CaptureReplaySource({ speed: sourceSpeed() });
   } else {
-    source = new WebSocketSource({ endpoint: controls.endpoint.value });
+    source = new WebSocketSource({
+      endpoint: controls.endpoint.value,
+      stream: "live-vi",
+      supportedStreams: ["live-vi"],
+    });
   }
   sourceStatus = Object.freeze({ source: source.kind, state: "closed" });
   attachSource(source);

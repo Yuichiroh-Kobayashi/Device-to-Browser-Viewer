@@ -43,6 +43,55 @@ function emitFirst(adapter, options = {}) {
   return adapter.handleBinary(frame({ sequence: BASE_SEQUENCE, timestampUs: 1_000_000n, flags: 1, ...options }));
 }
 
+function decodedViFrame({
+  streamId,
+  sequence,
+  timestampUs,
+  flags = 0x01,
+  validMask = 3,
+  voltage = 3.3,
+  current = 0.1,
+  timebaseReset = Boolean(flags & 0x40),
+  withSegment = true,
+} = {}) {
+  return {
+    stream_id: streamId,
+    flags,
+    gap_samples: 0n,
+    stream_start: Boolean(flags & 0x01),
+    stream_end: false,
+    discontinuity: Boolean(flags & 0x04),
+    producer_overflow: Boolean(flags & 0x08),
+    output_queue_drop: Boolean(flags & 0x10),
+    source_paused: Boolean(flags & 0x20),
+    timebase_reset: timebaseReset,
+    records: [{
+      sequence,
+      timestampUs,
+      validMask,
+      measurements: { voltage, current },
+    }],
+    segment: withSegment ? {
+      streamId,
+      startSequence: sequence,
+      startTimestampUs: timestampUs,
+      gapSamples: 0n,
+      causes: {
+        producerOverflow: false,
+        outputQueueDrop: false,
+        sourcePaused: false,
+        timebaseReset,
+      },
+    } : null,
+  };
+}
+
+function commitDecodedViFrame(model, options = {}) {
+  const candidate = model.prepareDecodedFrame(decodedViFrame(options));
+  model.commitCandidate(candidate);
+  return candidate;
+}
+
 function assertClose(actual, expected, tolerance = 0.00001) {
   assert.ok(Math.abs(actual - expected) <= tolerance, "expected " + expected + ", got " + actual);
 }
@@ -203,18 +252,21 @@ test("sequence gap, producer overflow, and output queue drop are distinct", () =
   assert.equal(summary.segmentCount, 3);
 });
 
-test("new stream creates a hard model segment without joining old line", () => {
+test("new stream starts a fresh viewport with a distinct cumulative segment", () => {
   const { model, adapter } = readyAdapter();
   startVi(adapter, 1);
   assert.equal(emitFirst(adapter, { streamId: 1 }), true);
+  const firstViewportRecord = model.recordSnapshot()[0];
   assert.equal(adapter.handleBinary(makeStreamEndFrame({ streamId: 1, sequence: BASE_SEQUENCE + 1n, timestampUs: 1_040_000n })), true);
   assert.equal(adapter.handleControl({ direction: "server_to_client", text: makeStoppedText(1) }), true);
   startVi(adapter, 2);
   assert.equal(emitFirst(adapter, { streamId: 2, timestampUs: 2_000_000n }), true);
   const records = model.recordSnapshot();
-  assert.equal(records.length, 2);
-  assert.notEqual(records[0].segment_id, records[1].segment_id);
-  assert.deepEqual(records.map((record) => record.stream_id), [1, 2]);
+  assert.equal(records.length, 1);
+  assert.deepEqual(records.map((record) => record.stream_id), [2]);
+  assert.notEqual(firstViewportRecord.segment_id, records[0].segment_id);
+  assert.equal(model.summary().sampleCount, 2, "clearing a viewport must not erase cumulative session samples");
+  assert.equal(model.summary().segmentCount, 2, "clearing a viewport must not erase cumulative segment history");
 });
 
 test("invalid channel is retained as invalid, never as a numeric placeholder", () => {
@@ -296,6 +348,119 @@ test("display-window eviction is a viewer condition, not a device sequence gap",
   assert.equal(summary.bufferUsage, 1);
 });
 
+test("reconnect keeps only the active device-time viewport while counters remain cumulative", () => {
+  const model = new StreamModel({ capacity: 64, displayWindowSeconds: 60 });
+  model.beginStream({ streamId: 1, profile: "vi-measurement" });
+  commitDecodedViFrame(model, { streamId: 1, sequence: 1n, timestampUs: 0n });
+  commitDecodedViFrame(model, { streamId: 1, sequence: 2n, timestampUs: 10_000_000n, flags: 0, withSegment: false });
+  model.finishStream();
+
+  model.beginStream({ streamId: 2, profile: "vi-measurement" });
+  commitDecodedViFrame(model, { streamId: 2, sequence: 1n, timestampUs: 10_040_000n });
+  commitDecodedViFrame(model, { streamId: 2, sequence: 2n, timestampUs: 80_000_000n, flags: 0, withSegment: false });
+
+  const records = model.recordSnapshot();
+  const markers = model.markerSnapshot();
+  assert.deepEqual(records.map((record) => ({ streamId: record.stream_id, timestampUs: record.timestamp_us })), [
+    { streamId: 2, timestampUs: 80_000_000n },
+  ]);
+  assert.deepEqual(markers, []);
+  assert.ok(records.at(-1).timestamp_us - records[0].timestamp_us <= 60_000_000n);
+  assert.deepEqual(model.summary().latest, {
+    streamId: 2,
+    sequence: "2",
+    timestampUs: "80000000",
+    voltageV: 3.3,
+    currentA: 0.1,
+    validMask: 3,
+  });
+  assert.equal(model.summary().sampleCount, 4);
+  assert.equal(model.summary().segmentCount, 2);
+  assert.equal(model.summary().viewerWindowEvictionCount, 1);
+});
+
+test("a new stream may reset device timestamps without retaining the prior stream viewport", () => {
+  const model = new StreamModel();
+  model.beginStream({ streamId: 1, profile: "vi-measurement" });
+  commitDecodedViFrame(model, { streamId: 1, sequence: 90n, timestampUs: 80_000_000n });
+  model.finishStream();
+
+  model.beginStream({ streamId: 2, profile: "vi-measurement" });
+  commitDecodedViFrame(model, { streamId: 2, sequence: 1n, timestampUs: 0n });
+
+  assert.deepEqual(model.recordSnapshot().map((record) => ({ streamId: record.stream_id, timestampUs: record.timestamp_us })), [
+    { streamId: 2, timestampUs: 0n },
+  ]);
+  assert.deepEqual(model.markerSnapshot().map((marker) => ({ streamId: marker.stream_id, timestampUs: marker.timestamp_us })), [
+    { streamId: 2, timestampUs: 0n },
+  ]);
+  assert.equal(model.summary().sampleCount, 2);
+  assert.equal(model.summary().segmentCount, 2);
+});
+
+test("an accepted TIMEBASE_RESET commits a fresh viewport epoch without losing counters", () => {
+  const model = new StreamModel();
+  model.beginStream({ streamId: 1, profile: "vi-measurement" });
+  commitDecodedViFrame(model, { streamId: 1, sequence: 90n, timestampUs: 80_000_000n });
+  const beforeReset = model.recordSnapshot()[0];
+
+  const resetCandidate = model.prepareDecodedFrame(decodedViFrame({
+    streamId: 1,
+    sequence: 1n,
+    timestampUs: 0n,
+    flags: 0x45,
+    timebaseReset: true,
+  }));
+  assert.deepEqual(model.recordSnapshot(), [beforeReset], "prepare must not clear a viewport");
+  assert.equal(model.markerSnapshot().length, 1);
+
+  model.commitCandidate(resetCandidate);
+  const resetRecord = model.recordSnapshot()[0];
+  const resetMarker = model.markerSnapshot()[0];
+  assert.deepEqual(model.recordSnapshot().map((record) => record.timestamp_us), [0n]);
+  assert.deepEqual(model.markerSnapshot().map((marker) => marker.timestamp_us), [0n]);
+  assert.notEqual(resetRecord.segment_id, beforeReset.segment_id);
+  assert.notEqual(resetRecord.voltage_segment_id, beforeReset.voltage_segment_id);
+  assert.notEqual(resetRecord.current_segment_id, beforeReset.current_segment_id);
+  assert.equal(resetMarker.causes.timebaseReset, true);
+
+  commitDecodedViFrame(model, {
+    streamId: 1,
+    sequence: 2n,
+    timestampUs: 1n,
+    flags: 0,
+    validMask: 0,
+    withSegment: false,
+  });
+  const [first, invalid] = model.recordSnapshot();
+  assert.equal(first.valid_mask, 3);
+  assert.equal(invalid.voltage_V, null);
+  assert.equal(invalid.current_A, null);
+  assert.equal(model.summary().sampleCount, 3);
+  assert.equal(model.summary().segmentCount, 2);
+  assert.equal(model.summary().invalidVoltageCount, 1);
+  assert.equal(model.summary().invalidCurrentCount, 1);
+});
+
+test("active-epoch window eviction cannot be blocked by stale FIFO entries", () => {
+  const model = new StreamModel({ displayWindowSeconds: 1 });
+  model.beginStream({ streamId: 7, profile: "vi-measurement" });
+  model.records.append(Object.freeze({ stream_id: 6, timestamp_us: 0n }));
+  model.records.append(Object.freeze({ stream_id: 7, timestamp_us: 0n }));
+  model.markers.append(Object.freeze({ stream_id: 6, timestamp_us: 0n }));
+  model.markers.append(Object.freeze({ stream_id: 7, timestamp_us: 0n }));
+
+  commitDecodedViFrame(model, { streamId: 7, sequence: 1n, timestampUs: 3_000_000n });
+
+  assert.deepEqual(model.recordSnapshot().map((record) => ({ streamId: record.stream_id, timestampUs: record.timestamp_us })), [
+    { streamId: 7, timestampUs: 3_000_000n },
+  ]);
+  assert.deepEqual(model.markerSnapshot().map((marker) => ({ streamId: marker.stream_id, timestampUs: marker.timestamp_us })), [
+    { streamId: 7, timestampUs: 3_000_000n },
+  ]);
+  assert.equal(model.summary().viewerWindowEvictionCount, 1);
+});
+
 test("S3 and S4 omit logical positions in both device time and sequence", () => {
   const cases = [
     { scenario: "producer-gap", retained: 245, delta: 6n, timestampDelta: 6n * SAMPLE_PERIOD_US, flag: 0x0c, gapSamples: "5" },
@@ -354,7 +519,7 @@ test("all S1-S7 synthetic scenarios preserve their stated semantics", () => {
   const reconnect = driveSyntheticScenario("reconnect");
   assert.equal(reconnect.model.summary().sampleCount, 250);
   assert.equal(reconnect.model.summary().segmentCount, 2);
-  assert.deepEqual([...new Set(reconnect.model.recordSnapshot().map((record) => record.stream_id))], [1, 2]);
+  assert.deepEqual([...new Set(reconnect.model.recordSnapshot().map((record) => record.stream_id))], [2]);
 
   const invalid = driveSyntheticScenario("invalid-frame");
   assert.equal(invalid.model.summary().sampleCount, 250);

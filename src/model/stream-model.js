@@ -77,6 +77,10 @@ export class StreamModel {
       throw new TypeError("invalid stream ID");
     }
     if (profile !== "vi-measurement") throw new TypeError("viewer only accepts vi-measurement");
+    // A negotiated stream is a new device-time epoch. Keep session-wide
+    // diagnostics/counters, but never let its waveform or markers share a
+    // viewport with the previous stream.
+    this._clearViewport();
     this._activeStreamId = streamId;
     this._activeProfile = profile;
     this._currentSegmentId = null;
@@ -113,13 +117,14 @@ export class StreamModel {
       throw new TypeError("decoded frame flags or gap metadata are invalid");
     }
 
+    const beginsViewportEpoch = Boolean(decoded.timebase_reset);
     const hasReferenceSegment = decoded.segment !== null && decoded.segment !== undefined;
     if (!hasReferenceSegment && this._currentSegmentId === null) {
       throw new TypeError("first frame must carry a reference segment");
     }
     let segmentId = hasReferenceSegment ? this._nextSegmentId : this._currentSegmentId;
-    let voltageWasValid = this._voltageWasValid;
-    let currentWasValid = this._currentWasValid;
+    let voltageWasValid = beginsViewportEpoch ? false : this._voltageWasValid;
+    let currentWasValid = beginsViewportEpoch ? false : this._currentWasValid;
     let voltagePiece = this._voltageSegmentId;
     let currentPiece = this._currentSegmentPieceId;
     const records = new Array(decoded.records.length);
@@ -143,7 +148,7 @@ export class StreamModel {
       if (!(validMask & 1)) invalidVoltageDelta += 1;
       if (!(validMask & 2)) invalidCurrentDelta += 1;
 
-      const boundary = hasReferenceSegment && index === 0;
+      const boundary = (hasReferenceSegment || beginsViewportEpoch) && index === 0;
       if (voltage !== null) {
         if (boundary || !voltageWasValid || this._channelStreamId !== decoded.stream_id) voltagePiece += 1;
         voltageWasValid = true;
@@ -215,12 +220,17 @@ export class StreamModel {
       sequenceGap: typeof decoded.gap_samples === "bigint" ? decoded.gap_samples : 0n,
       producerOverflow: Boolean(decoded.producer_overflow),
       outputQueueDrop: Boolean(decoded.output_queue_drop),
+      beginsViewportEpoch,
     });
   }
 
   commitCandidate(candidate) {
     if (!candidate || candidate.kind === "stream-end") return;
     if (candidate.kind !== "data") throw new TypeError("unknown model candidate");
+    // The frame is already fully validated by prepareDecodedFrame. Clearing at
+    // commit time keeps rejection atomic and makes the reset frame the first
+    // visible record in its fresh viewport epoch.
+    if (candidate.beginsViewportEpoch) this._clearViewport();
     for (const record of candidate.records) {
       if (this.records.append(record) !== undefined) {
         this.viewerEvictionCount += 1;
@@ -252,15 +262,34 @@ export class StreamModel {
   _evictForDisplayWindow(latestTimestampUs, streamId) {
     const widthUs = BigInt(Math.round(this.displayWindowSeconds * 1_000_000));
     const cutoff = latestTimestampUs > widthUs ? latestTimestampUs - widthUs : 0n;
-    // The FIFO is arrival ordered. Only compare timestamps inside the same stream;
-    // a reconnect may legitimately establish a new device timebase.
+    // An epoch reset clears both rings, but discard any stale/mismatched FIFO
+    // entries defensively so they can never block active-epoch time eviction.
     while (this.records.size > 0) {
       const oldest = this.records.peek();
-      if (oldest.stream_id !== streamId || oldest.timestamp_us >= cutoff) break;
+      if (oldest.stream_id !== streamId) {
+        this.records.shift();
+        continue;
+      }
+      if (oldest.timestamp_us >= cutoff) break;
       this.records.shift();
       this.viewerEvictionCount += 1;
       this.viewerWindowEvictionCount += 1;
     }
+    while (this.markers.size > 0) {
+      const oldest = this.markers.peek();
+      if (oldest.stream_id !== streamId) {
+        this.markers.shift();
+        continue;
+      }
+      if (oldest.timestamp_us >= cutoff) break;
+      this.markers.shift();
+    }
+  }
+
+  _clearViewport() {
+    this.records.clear();
+    this.markers.clear();
+    this.latest = null;
   }
 
   recordSnapshot() { return this.records.toArray(); }

@@ -43,6 +43,16 @@ function selectSupportedStream(stream, supportedStreams) {
   return Object.freeze({ stream: selected, supportedStreams: Object.freeze([...supportedStreams]) });
 }
 
+function requireControlAuthority(controlAuthority) {
+  if (!controlAuthority || (typeof controlAuthority !== "object" && typeof controlAuthority !== "function")) {
+    throw new TypeError("controlAuthority is required");
+  }
+  for (const method of ["prepareOutboundControl", "commitOutboundControl", "rollbackOutboundControl", "summary"]) {
+    if (typeof controlAuthority[method] !== "function") throw new TypeError(`controlAuthority.${method} must be a function`);
+  }
+  return controlAuthority;
+}
+
 export function defaultWebSocketEndpoint(locationLike = globalThis.location) {
   const host = locationLike?.host;
   if (!host) return "ws://127.0.0.1:8080/d2b/v0/stream";
@@ -55,12 +65,14 @@ export function defaultWebSocketEndpoint(locationLike = globalThis.location) {
  * origin bypass, CORS workaround, or authentication shortcut.
  */
 export class WebSocketSource extends DataSource {
-  constructor({ endpoint = defaultWebSocketEndpoint(), stream, supportedStreams } = {}) {
+  constructor({ endpoint = defaultWebSocketEndpoint(), stream, supportedStreams, controlAuthority } = {}) {
     const selection = selectSupportedStream(stream, supportedStreams);
+    const authority = requireControlAuthority(controlAuthority);
     super("websocket");
     this.endpoint = endpoint;
     this.stream = selection.stream;
     this.supportedStreams = selection.supportedStreams;
+    this.controlAuthority = authority;
     this.socket = null;
     this._generation = 0;
     this._socketGeneration = 0;
@@ -69,7 +81,6 @@ export class WebSocketSource extends DataSource {
     this._closing = null;
     this._closePromise = null;
     this._failedOpenSocket = null;
-    this._activeStreamId = null;
   }
 
   setEndpoint(endpoint) {
@@ -106,7 +117,7 @@ export class WebSocketSource extends DataSource {
     opening.generation = generation;
     this._opening = opening;
     this._openPromise = opening.promise;
-    this._emitStatus("connecting");
+    this._safeEmitStatus("connecting");
     let socket = null;
     try {
       socket = new WebSocketClass(this.endpoint);
@@ -122,12 +133,11 @@ export class WebSocketSource extends DataSource {
       if (socket && this._ownsSocket(socket, generation)) {
         this.socket = null;
         this._socketGeneration = 0;
-        this._activeStreamId = null;
         try { socket.close(1000, "viewer close"); } catch { /* initialization already failed */ }
       }
       this._settleOpeningReject(opening, error);
-      this._emitError(error);
-      this._emitStatus("closed", "WebSocket construction failed");
+      this._safeEmitError(error);
+      this._safeEmitStatus("closed", "WebSocket construction failed");
     }
     return opening.promise;
   }
@@ -142,9 +152,12 @@ export class WebSocketSource extends DataSource {
 
   async stop() {
     const WebSocketClass = globalThis.WebSocket;
-    if (!this.socket || !WebSocketClass || this.socket.readyState !== WebSocketClass.OPEN || this._isClosingSocket(this.socket, this._socketGeneration)) return;
-    const message = { type: "stop_stream", reason: "viewer stop" };
-    if (this._activeStreamId !== null) message.stream_id = this._activeStreamId;
+    if (!this.socket || !WebSocketClass || this.socket.readyState !== WebSocketClass.OPEN || this._isClosingSocket(this.socket, this._socketGeneration)) {
+      throw new Error("open the WebSocket and await an active stream before stopping");
+    }
+    const streamId = this.controlAuthority.summary()?.streamId;
+    if (!Number.isSafeInteger(streamId) || streamId < 1) throw new Error("no accepted active stream to stop");
+    const message = { type: "stop_stream", stream_id: streamId, reason: "viewer stop" };
     this._sendControl(JSON.stringify(message));
   }
 
@@ -159,7 +172,7 @@ export class WebSocketSource extends DataSource {
     }
     const socket = this.socket;
     if (!socket) {
-      if (this.state !== "closed") this._emitStatus("closed");
+      if (this.state !== "closed") this._safeEmitStatus("closed");
       return Promise.resolve();
     }
     const WebSocketClass = globalThis.WebSocket;
@@ -183,7 +196,7 @@ export class WebSocketSource extends DataSource {
       }
     } catch (error) {
       this._settleClosingReject(closeAttempt, error);
-      this._emitError(error);
+      this._safeEmitError(error);
     }
     return closeAttempt.promise;
   }
@@ -191,13 +204,13 @@ export class WebSocketSource extends DataSource {
   _handleSocketOpen(socket, generation, opening) {
     if (!this._ownsSocket(socket, generation) || this._isClosingSocket(socket, generation) || this._opening !== opening || opening.settled) return;
     try {
-      this._emitStatus("open");
+      this._safeEmitStatus("open");
       this._sendControl(makeHelloText(), socket, generation);
       this._settleOpeningResolve(opening);
     } catch (error) {
       this._failedOpenSocket = socket;
       this._settleOpeningReject(opening, error);
-      this._emitError(error);
+      this._safeEmitError(error);
       this._closeAfterOpenFailure(socket, generation);
     }
   }
@@ -205,21 +218,20 @@ export class WebSocketSource extends DataSource {
   _handleSocketMessage(socket, generation, event) {
     if (!this._ownsSocket(socket, generation) || this._isClosingSocket(socket, generation)) return;
     if (typeof event.data === "string") {
-      this._observeServerControl(event.data);
-      this._emitControl("server_to_client", event.data);
+      this._safeEmitControl("server_to_client", event.data);
       return;
     }
     if (event.data instanceof ArrayBuffer) {
-      this._emitBinary(event.data);
+      this._safeEmitBinary(event.data);
       return;
     }
-    this._emitError(new TypeError("WebSocket delivered a non-ArrayBuffer binary payload"));
+    this._safeEmitError(new TypeError("WebSocket delivered a non-ArrayBuffer binary payload"));
   }
 
   _handleSocketError(socket, generation, opening) {
     if (!this._ownsSocket(socket, generation) || this._isClosingSocket(socket, generation)) return;
     const error = new Error("WebSocket transport error");
-    this._emitError(error);
+    this._safeEmitError(error);
     if (this._opening === opening && !opening.settled) {
       this._failedOpenSocket = socket;
       this._settleOpeningReject(opening, error);
@@ -236,10 +248,9 @@ export class WebSocketSource extends DataSource {
     }
     this.socket = null;
     this._socketGeneration = 0;
-    this._activeStreamId = null;
     this._failedOpenSocket = null;
-    this._emitStatus("closed", "WebSocket closed");
     if (closing?.socket === socket && closing.generation === generation) this._settleClosingResolve(closing);
+    this._safeEmitStatus("closed", "WebSocket closed");
   }
 
   _closeAfterOpenFailure(socket, generation) {
@@ -253,10 +264,19 @@ export class WebSocketSource extends DataSource {
     if (!this._ownsSocket(socket, generation) || this._isClosingSocket(socket, generation) || !WebSocketClass || socket.readyState !== WebSocketClass.OPEN) {
       throw new Error("WebSocket is not open");
     }
-    socket.send(controlText);
-    if (this._ownsSocket(socket, generation) && !this._isClosingSocket(socket, generation)) {
-      this._emitControl("client_to_server", controlText);
+    const token = this.controlAuthority.prepareOutboundControl(controlText);
+    try {
+      socket.send(controlText);
+    } catch (error) {
+      try {
+        this.controlAuthority.rollbackOutboundControl(token);
+      } catch (rollbackError) {
+        this._safeEmitError(rollbackError);
+      }
+      throw error;
     }
+    // A successful send is irreversible. Never roll back or retry a commit error.
+    this.controlAuthority.commitOutboundControl(token);
   }
 
   _ownsSocket(socket, generation) {
@@ -299,15 +319,19 @@ export class WebSocketSource extends DataSource {
     closing.reject(error);
   }
 
-  _observeServerControl(controlText) {
-    // This is only for optional stop targeting. The adapter remains the sole
-    // validator and owner of server transition state.
-    try {
-      const message = JSON.parse(controlText);
-      if (message?.type === "stream_started" && Number.isSafeInteger(message.stream_id)) this._activeStreamId = message.stream_id;
-      if (message?.type === "stream_stopped") this._activeStreamId = null;
-    } catch {
-      // Pass malformed text to the strict adapter; it will record the protocol error.
-    }
+  _safeEmitStatus(state, detail = undefined) {
+    try { this._emitStatus(state, detail); } catch { /* external observer failures cannot strand lifecycle */ }
+  }
+
+  _safeEmitError(error) {
+    try { this._emitError(error); } catch { /* never recurse through a failing error observer */ }
+  }
+
+  _safeEmitControl(direction, text) {
+    try { this._emitControl(direction, text); } catch (error) { this._safeEmitError(error); }
+  }
+
+  _safeEmitBinary(buffer) {
+    try { this._emitBinary(buffer); } catch (error) { this._safeEmitError(error); }
   }
 }

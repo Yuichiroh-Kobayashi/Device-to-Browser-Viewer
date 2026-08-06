@@ -4,6 +4,7 @@ import { SYNTHETIC_SCENARIOS, SyntheticSource } from "./sources/synthetic-source
 import { CaptureReplaySource } from "./sources/capture-replay-source.js";
 import { defaultWebSocketEndpoint, WebSocketSource } from "./sources/websocket-source.js";
 import { WaveformCanvas } from "./render/waveform-canvas.js";
+import { liveActionAvailability } from "./ui/action-availability.js";
 
 const element = (id) => document.getElementById(id);
 const controls = {
@@ -63,6 +64,10 @@ function appendDefinition(grid, label, value) {
 function updateUi() {
   const summary = model.summary();
   const session = adapter.summary();
+  const liveActions = liveActionAvailability(session, sourceStatus);
+  const liveSource = source instanceof WebSocketSource;
+  controls.start.disabled = liveSource ? !liveActions.start : false;
+  controls.stop.disabled = liveSource ? !liveActions.stop : false;
   statusGrid.replaceChildren();
   const entries = [
     ["Source state", `${sourceStatus.source}: ${sourceStatus.state}`],
@@ -117,7 +122,12 @@ function afterActivity() {
 }
 
 function attachSource(nextSource) {
-  nextSource.onControl((control) => { adapter.handleControl(control); afterActivity(); });
+  nextSource.onControl((control) => {
+    // WebSocketSource commits outbound controls through adapter authority and
+    // emits only raw server controls. Keep synthetic/capture replay ingestion.
+    if (!(nextSource instanceof WebSocketSource) || control.direction !== "client_to_server") adapter.handleControl(control);
+    afterActivity();
+  });
   nextSource.onBinary((buffer) => { adapter.handleBinary(buffer); afterActivity(); });
   nextSource.onStatus((status) => {
     sourceStatus = status;
@@ -140,6 +150,7 @@ async function replaceSource() {
       endpoint: controls.endpoint.value,
       stream: "live-vi",
       supportedStreams: ["live-vi"],
+      controlAuthority: adapter,
     });
   }
   sourceStatus = Object.freeze({ source: source.kind, state: "closed" });
@@ -189,11 +200,20 @@ controls.open.addEventListener("click", () => {
 });
 controls.start.addEventListener("click", () => {
   void withUiError(async () => {
-    if (source instanceof WebSocketSource && adapter.controlState !== "READY") throw new Error("wait for a validated welcome before starting live stream");
+    if (source instanceof WebSocketSource && !liveActionAvailability(adapter.summary(), sourceStatus).start) {
+      throw new Error("wait for a validated welcome before starting live stream");
+    }
     await source.start();
   });
 });
-controls.stop.addEventListener("click", () => { void withUiError(() => source.stop()); });
+controls.stop.addEventListener("click", () => {
+  void withUiError(async () => {
+    if (source instanceof WebSocketSource && !liveActionAvailability(adapter.summary(), sourceStatus).stop) {
+      throw new Error("wait for an accepted active stream before stopping live stream");
+    }
+    await source.stop();
+  });
+});
 controls.close.addEventListener("click", () => { void withUiError(() => source.close()); });
 
 window.addEventListener("error", (event) => {

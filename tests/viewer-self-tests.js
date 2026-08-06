@@ -139,6 +139,30 @@ const tests = [
     equal(adapter.handleBinary(invalid), false);
     equal(model.summary().sampleCount, 1); equal(adapter.decoderState, before);
   }],
+  ["orderly stream_stopped requires an accepted STREAM_END", () => {
+    const { model, adapter } = readyAdapter();
+    startVi(adapter); assert(firstFrame(adapter));
+    const beforeState = adapter.decoderState;
+    const beforeSamples = model.summary().sampleCount;
+    const beforeDiagnostics = adapter.summary().diagnosticCount;
+
+    equal(adapter.handleControl({ direction: "server_to_client", text: makeStoppedText(1) }), false);
+    equal(adapter.controlState, "STREAMING"); equal(adapter.decoderState, beforeState);
+    equal(model.summary().sampleCount, beforeSamples);
+
+    const malformedEnd = makeStreamEndFrame({ streamId: 1, sequence: BASE_SEQUENCE + 1n, timestampUs: 1_040_000n });
+    new Uint8Array(malformedEnd)[0] = 0x58;
+    equal(adapter.handleBinary(malformedEnd), false);
+    equal(adapter.controlState, "STREAMING"); equal(adapter.decoderState, beforeState);
+    equal(model.summary().sampleCount, beforeSamples);
+    assert(adapter.summary().diagnosticCount > beforeDiagnostics, "rejections did not record diagnostics");
+    equal(adapter.handleControl({ direction: "server_to_client", text: makeStoppedText(1) }), false);
+
+    assert(adapter.handleBinary(makeStreamEndFrame({ streamId: 1, sequence: BASE_SEQUENCE + 1n, timestampUs: 1_040_000n })));
+    equal(adapter.decoderState.ended, true);
+    assert(adapter.handleControl({ direction: "server_to_client", text: makeStoppedText(1) }));
+    equal(adapter.controlState, "READY"); equal(adapter.decoderState, null); equal(adapter.active, null);
+  }],
   ["welcome/start consistency", () => {
     const { adapter } = readyAdapter();
     assert(adapter.handleControl({ direction: "client_to_server", text: makeStartText() }));

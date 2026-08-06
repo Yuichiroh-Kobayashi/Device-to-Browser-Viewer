@@ -7,8 +7,9 @@ import { StreamModel } from "../src/model/stream-model.js";
 import { SessionAdapter } from "../src/protocol/session-adapter.js";
 import { relativeDeviceSeconds } from "../src/render/scale.js";
 import { parseLiveCapture, CaptureReplaySource } from "../src/sources/capture-replay-source.js";
+import { WebSocketSource } from "../src/sources/websocket-source.js";
 import {
-  buildSyntheticPlan, makeHelloText, makeWelcomeText, makeStartText, makeStartedText,
+  DEFAULT_VI_PARAMETERS, buildSyntheticPlan, makeHelloText, makeWelcomeText, makeStartText, makeStartedText,
   makeStoppedText, makeStreamEndFrame, makeViFrame, SyntheticSource,
 } from "../src/sources/synthetic-source.js";
 
@@ -87,6 +88,70 @@ function envelope(frameBuffer) {
   };
 }
 
+class ControlledWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  static instances = [];
+
+  constructor(endpoint) {
+    this.endpoint = endpoint;
+    this.readyState = ControlledWebSocket.CONNECTING;
+    this.binaryType = "";
+    this.sent = [];
+    this.closeCalls = 0;
+    this.throwOnClose = null;
+    this.onopen = null;
+    this.onmessage = null;
+    this.onerror = null;
+    this.onclose = null;
+    ControlledWebSocket.instances.push(this);
+  }
+
+  static reset() { ControlledWebSocket.instances = []; }
+
+  send(text) {
+    if (this.readyState !== ControlledWebSocket.OPEN) throw new Error("mock send while not open");
+    this.sent.push(text);
+  }
+
+  close() {
+    this.closeCalls += 1;
+    if (this.throwOnClose) throw this.throwOnClose;
+    this.readyState = ControlledWebSocket.CLOSING;
+  }
+
+  open() {
+    this.readyState = ControlledWebSocket.OPEN;
+    this.onopen?.({});
+  }
+
+  message(data) { this.onmessage?.({ data }); }
+  error() { this.onerror?.({}); }
+
+  finishClose() {
+    this.readyState = ControlledWebSocket.CLOSED;
+    this.onclose?.({});
+  }
+}
+
+async function withWebSocketClass(WebSocketClass, run) {
+  const original = globalThis.WebSocket;
+  globalThis.WebSocket = WebSocketClass;
+  try {
+    return await run();
+  } finally {
+    if (original === undefined) delete globalThis.WebSocket;
+    else globalThis.WebSocket = original;
+  }
+}
+
+async function withControlledWebSocket(run) {
+  ControlledWebSocket.reset();
+  return withWebSocketClass(ControlledWebSocket, run);
+}
+
 test("fixed-capacity ring remains bounded", () => {
   const ring = new BoundedSegmentBuffer(3);
   ring.append("a"); ring.append("b"); ring.append("c");
@@ -160,6 +225,35 @@ test("reference parser rejection rolls back decoder and measurement model", () =
   assert.equal(model.recordSnapshot().length, 1);
   assert.strictEqual(adapter.decoderState, beforeState);
   assert.equal(adapter.summary().lastError.code, "bad_magic");
+});
+
+test("orderly stream_stopped requires an accepted STREAM_END", () => {
+  const { model, adapter } = readyAdapter();
+  startVi(adapter);
+  assert.equal(emitFirst(adapter), true);
+  const beforeState = adapter.decoderState;
+  const beforeSummary = model.summary();
+
+  assert.equal(adapter.handleControl({ direction: "server_to_client", text: makeStoppedText(1) }), false);
+  assert.equal(adapter.controlState, "STREAMING");
+  assert.strictEqual(adapter.decoderState, beforeState);
+  assert.equal(model.summary().sampleCount, beforeSummary.sampleCount);
+
+  const malformedEnd = makeStreamEndFrame({ streamId: 1, sequence: BASE_SEQUENCE + 1n, timestampUs: 1_040_000n });
+  new Uint8Array(malformedEnd)[0] = 0x58;
+  assert.equal(adapter.handleBinary(malformedEnd), false);
+  assert.equal(adapter.controlState, "STREAMING");
+  assert.strictEqual(adapter.decoderState, beforeState);
+  assert.equal(model.summary().sampleCount, beforeSummary.sampleCount);
+  assert.equal(adapter.handleControl({ direction: "server_to_client", text: makeStoppedText(1) }), false);
+  assert.equal(adapter.controlState, "STREAMING");
+
+  assert.equal(adapter.handleBinary(makeStreamEndFrame({ streamId: 1, sequence: BASE_SEQUENCE + 1n, timestampUs: 1_040_000n })), true);
+  assert.equal(adapter.decoderState.ended, true);
+  assert.equal(adapter.handleControl({ direction: "server_to_client", text: makeStoppedText(1) }), true);
+  assert.equal(adapter.controlState, "READY");
+  assert.equal(adapter.decoderState, null);
+  assert.equal(adapter.active, null);
 });
 
 test("welcome/start consistency state-machine rejects mismatched stream_started", () => {
@@ -265,6 +359,101 @@ test("synthetic source start/stop lifecycle is bounded and closes cleanly", asyn
     await source.close();
   }
   assert.equal(source.state, "closed");
+});
+
+test("WebSocket close owns its callbacks through awaited reopen", { concurrency: false }, async () => {
+  await withControlledWebSocket(async () => {
+    const source = new WebSocketSource({ endpoint: "ws://example.test/d2b/v0/stream" });
+    const statuses = [];
+    const controls = [];
+    const errors = [];
+    source.onStatus((status) => statuses.push(status.state));
+    source.onControl((control) => controls.push(control));
+    source.onError((error) => errors.push(error));
+
+    const firstOpen = source.open();
+    const first = ControlledWebSocket.instances[0];
+    assert.equal(first.binaryType, "arraybuffer");
+    first.open();
+    await firstOpen;
+    assert.equal(source.socket, first);
+    assert.equal(JSON.parse(first.sent[0]).type, "hello");
+    assert.equal(controls.length, 1);
+
+    const pendingClose = source.close();
+    let closeResolved = false;
+    pendingClose.then(() => { closeResolved = true; });
+    await Promise.resolve();
+    assert.equal(first.readyState, ControlledWebSocket.CLOSING);
+    assert.equal(closeResolved, false);
+
+    const reopening = source.open();
+    assert.equal(ControlledWebSocket.instances.length, 1, "open must wait for the owned close");
+    first.finishClose();
+    await pendingClose;
+    await Promise.resolve();
+    const second = ControlledWebSocket.instances[1];
+    assert.ok(second, "reopen did not create a new socket after close");
+    second.open();
+    await reopening;
+    assert.equal(source.socket, second);
+    assert.equal(source.state, "open");
+
+    const statusCountBeforeStaleCallbacks = statuses.length;
+    const controlCountBeforeStaleCallbacks = controls.length;
+    const errorCountBeforeStaleCallbacks = errors.length;
+    first.open();
+    first.message(JSON.stringify({ type: "stream_started", stream_id: 999 }));
+    first.error();
+    first.finishClose();
+    assert.equal(source.socket, second);
+    assert.equal(source.state, "open");
+    assert.equal(statuses.length, statusCountBeforeStaleCallbacks);
+    assert.equal(controls.length, controlCountBeforeStaleCallbacks);
+    assert.equal(errors.length, errorCountBeforeStaleCallbacks);
+    assert.equal(statuses.at(-1), "open");
+
+    await source.start();
+    second.message(JSON.stringify({ type: "stream_started", stream: "measurement-0", profile: "vi-measurement", parameters: DEFAULT_VI_PARAMETERS, stream_id: 22 }));
+    await source.stop();
+    assert.equal(JSON.parse(second.sent.at(-2)).type, "start_stream");
+    assert.equal(JSON.parse(second.sent.at(-1)).stream_id, 22);
+
+    const finalClose = source.close();
+    second.finishClose();
+    await finalClose;
+    assert.equal(source.state, "closed");
+    assert.equal(source.socket, null);
+  });
+});
+
+test("WebSocket synchronous construction and close failures clear pending attempts", { concurrency: false }, async () => {
+  const source = new WebSocketSource({ endpoint: "ws://example.test/d2b/v0/stream" });
+  class ThrowingWebSocket {
+    constructor() { throw new Error("mock constructor failure"); }
+  }
+  await withWebSocketClass(ThrowingWebSocket, async () => {
+    await assert.rejects(source.open(), /mock constructor failure/);
+    assert.equal(source.socket, null);
+    assert.equal(source._openPromise, null);
+  });
+
+  await withControlledWebSocket(async () => {
+    const opening = source.open();
+    const socket = ControlledWebSocket.instances[0];
+    socket.open();
+    await opening;
+    socket.throwOnClose = new Error("mock close failure");
+    await assert.rejects(source.close(), /mock close failure/);
+    assert.equal(source.socket, socket);
+    assert.equal(source._closePromise, null);
+    socket.throwOnClose = null;
+    const closing = source.close();
+    socket.finishClose();
+    await closing;
+    assert.equal(source.socket, null);
+    assert.equal(source.state, "closed");
+  });
 });
 
 test("exact VAMeter capture schema replays fractional received_ms and rejects legacy frame shape", async () => {

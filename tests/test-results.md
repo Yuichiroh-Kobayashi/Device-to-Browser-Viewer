@@ -27,10 +27,10 @@ python3 -m py_compile tools/serve.py
 ~~~
 
 `node --test tests/node-self-tests.mjs` exited 0. Direct
-`node tests/node-self-tests.mjs` reported 13/13 named semantic checks. The
+`node tests/node-self-tests.mjs` reported 16/16 named semantic checks. The
 `py_compile` check also exited 0.
 
-Browser self-tests at `/tests/` reported TOTAL 13, PASS 13, FAIL 0 in both
+Browser self-tests at `/tests/` reported TOTAL 14, PASS 14, FAIL 0 in both
 Chrome and Edge. The scenario observations were:
 
 - S1 stable: 250/1.

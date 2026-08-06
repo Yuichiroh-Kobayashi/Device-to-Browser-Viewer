@@ -1,6 +1,16 @@
 import { DataSource } from "./data-source.js";
 import { DEFAULT_VI_PARAMETERS, makeHelloText } from "./synthetic-source.js";
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject, settled: false, socket: null, generation: 0 };
+}
+
 export function defaultWebSocketEndpoint(locationLike = globalThis.location) {
   const host = locationLike?.host;
   if (!host) return "ws://127.0.0.1:8080/d2b/v0/stream";
@@ -18,12 +28,18 @@ export class WebSocketSource extends DataSource {
     this.endpoint = endpoint;
     this.stream = stream;
     this.socket = null;
+    this._generation = 0;
+    this._socketGeneration = 0;
+    this._opening = null;
     this._openPromise = null;
+    this._closing = null;
+    this._closePromise = null;
+    this._failedOpenSocket = null;
     this._activeStreamId = null;
   }
 
   setEndpoint(endpoint) {
-    if (this.socket) throw new Error("close the WebSocket before changing its endpoint");
+    if (this.socket || this._opening || this._closing) throw new Error("close the WebSocket before changing its endpoint");
     const parsed = new URL(endpoint, globalThis.location?.href || "http://localhost/");
     if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") throw new TypeError("WebSocket endpoint must use ws: or wss:");
     this.endpoint = parsed.href;
@@ -32,66 +48,61 @@ export class WebSocketSource extends DataSource {
   async open() {
     const WebSocketClass = globalThis.WebSocket;
     if (typeof WebSocketClass === "undefined") throw new Error("WebSocket is unavailable in this runtime");
-    if (this.socket?.readyState === WebSocketClass.OPEN) return;
-    if (this._openPromise) return this._openPromise;
+    if (this._closing) {
+      const closing = this._closing;
+      const closed = WebSocketClass.CLOSED ?? 3;
+      if (this._ownsSocket(closing.socket, closing.generation) && closing.socket.readyState === closed) {
+        this._handleSocketClose(closing.socket, closing.generation);
+      }
+      if (this._closing) await this._closing.promise;
+      return this.open();
+    }
+    if (this._opening) return this._opening.promise;
+    if (this.socket) {
+      if (this.socket.readyState === WebSocketClass.OPEN && this._failedOpenSocket !== this.socket) return;
+      await this.close();
+      return this.open();
+    }
+    return this._openNewSocket(WebSocketClass);
+  }
+
+  _openNewSocket(WebSocketClass) {
+    const opening = deferred();
+    const generation = ++this._generation;
+    opening.generation = generation;
+    this._opening = opening;
+    this._openPromise = opening.promise;
     this._emitStatus("connecting");
-    let settleOpen;
-    let settleReject;
-    const opening = new Promise((resolve, reject) => {
-      settleOpen = resolve;
-      settleReject = reject;
-    });
-    this._openPromise = opening;
+    let socket = null;
     try {
-      const socket = new WebSocketClass(this.endpoint);
+      socket = new WebSocketClass(this.endpoint);
+      opening.socket = socket;
       this.socket = socket;
+      this._socketGeneration = generation;
       socket.binaryType = "arraybuffer";
-      let settled = false;
-      socket.onopen = () => {
-        this._emitStatus("open");
-        try {
-          this._sendControl(makeHelloText());
-          settled = true;
-          this._openPromise = null;
-          settleOpen();
-        } catch (error) {
-          settled = true;
-          this._openPromise = null;
-          settleReject(error);
-        }
-      };
-      socket.onmessage = (event) => this._onMessage(event);
-      socket.onerror = () => {
-        const error = new Error("WebSocket transport error");
-        this._emitError(error);
-        if (!settled) {
-          settled = true;
-          this._openPromise = null;
-          settleReject(error);
-        }
-      };
-      socket.onclose = () => {
-        this.socket = null;
-        this._activeStreamId = null;
-        this._emitStatus("closed", "WebSocket closed");
-        if (!settled) {
-          settled = true;
-          this._openPromise = null;
-          settleReject(new Error("WebSocket closed before opening"));
-        }
-      };
+      socket.onopen = () => this._handleSocketOpen(socket, generation, opening);
+      socket.onmessage = (event) => this._handleSocketMessage(socket, generation, event);
+      socket.onerror = () => this._handleSocketError(socket, generation, opening);
+      socket.onclose = () => this._handleSocketClose(socket, generation);
     } catch (error) {
-      this._openPromise = null;
+      if (socket && this._ownsSocket(socket, generation)) {
+        this.socket = null;
+        this._socketGeneration = 0;
+        this._activeStreamId = null;
+        try { socket.close(1000, "viewer close"); } catch { /* initialization already failed */ }
+      }
+      this._settleOpeningReject(opening, error);
       this._emitError(error);
       this._emitStatus("closed", "WebSocket construction failed");
-      settleReject(error);
     }
-    return opening;
+    return opening.promise;
   }
 
   async start() {
     const WebSocketClass = globalThis.WebSocket;
-    if (!this.socket || !WebSocketClass || this.socket.readyState !== WebSocketClass.OPEN) throw new Error("open the WebSocket and await welcome before starting");
+    if (!this.socket || !WebSocketClass || this.socket.readyState !== WebSocketClass.OPEN || this._isClosingSocket(this.socket, this._socketGeneration)) {
+      throw new Error("open the WebSocket and await welcome before starting");
+    }
     this._sendControl(JSON.stringify({
       type: "start_stream",
       stream: this.stream,
@@ -102,31 +113,68 @@ export class WebSocketSource extends DataSource {
 
   async stop() {
     const WebSocketClass = globalThis.WebSocket;
-    if (!this.socket || !WebSocketClass || this.socket.readyState !== WebSocketClass.OPEN) return;
+    if (!this.socket || !WebSocketClass || this.socket.readyState !== WebSocketClass.OPEN || this._isClosingSocket(this.socket, this._socketGeneration)) return;
     const message = { type: "stop_stream", reason: "viewer stop" };
     if (this._activeStreamId !== null) message.stream_id = this._activeStreamId;
     this._sendControl(JSON.stringify(message));
   }
 
-  async close() {
-    const WebSocketClass = globalThis.WebSocket;
-    if (!this.socket) {
-      if (this.state !== "closed") this._emitStatus("closed");
-      return;
+  close() {
+    if (this._closing) {
+      const closingAttempt = this._closing;
+      const closed = globalThis.WebSocket?.CLOSED ?? 3;
+      if (this._ownsSocket(closingAttempt.socket, closingAttempt.generation) && closingAttempt.socket.readyState === closed) {
+        this._handleSocketClose(closingAttempt.socket, closingAttempt.generation);
+      }
+      return this._closing?.promise || Promise.resolve();
     }
     const socket = this.socket;
-    if (!WebSocketClass || socket.readyState === WebSocketClass.CLOSING || socket.readyState === WebSocketClass.CLOSED) return;
-    socket.close(1000, "viewer close");
-  }
-
-  _sendControl(controlText) {
+    if (!socket) {
+      if (this.state !== "closed") this._emitStatus("closed");
+      return Promise.resolve();
+    }
     const WebSocketClass = globalThis.WebSocket;
-    if (!this.socket || !WebSocketClass || this.socket.readyState !== WebSocketClass.OPEN) throw new Error("WebSocket is not open");
-    this.socket.send(controlText);
-    this._emitControl("client_to_server", controlText);
+    const closed = WebSocketClass?.CLOSED ?? 3;
+    const closing = WebSocketClass?.CLOSING ?? 2;
+    const generation = this._socketGeneration;
+    if (socket.readyState === closed) {
+      this._handleSocketClose(socket, generation);
+      return Promise.resolve();
+    }
+
+    const closeAttempt = deferred();
+    closeAttempt.socket = socket;
+    closeAttempt.generation = generation;
+    this._closing = closeAttempt;
+    this._closePromise = closeAttempt.promise;
+    try {
+      if (socket.readyState !== closing) socket.close(1000, "viewer close");
+      if (this._ownsSocket(socket, generation) && socket.readyState === closed) {
+        this._handleSocketClose(socket, generation);
+      }
+    } catch (error) {
+      this._settleClosingReject(closeAttempt, error);
+      this._emitError(error);
+    }
+    return closeAttempt.promise;
   }
 
-  _onMessage(event) {
+  _handleSocketOpen(socket, generation, opening) {
+    if (!this._ownsSocket(socket, generation) || this._isClosingSocket(socket, generation) || this._opening !== opening || opening.settled) return;
+    try {
+      this._emitStatus("open");
+      this._sendControl(makeHelloText(), socket, generation);
+      this._settleOpeningResolve(opening);
+    } catch (error) {
+      this._failedOpenSocket = socket;
+      this._settleOpeningReject(opening, error);
+      this._emitError(error);
+      this._closeAfterOpenFailure(socket, generation);
+    }
+  }
+
+  _handleSocketMessage(socket, generation, event) {
+    if (!this._ownsSocket(socket, generation) || this._isClosingSocket(socket, generation)) return;
     if (typeof event.data === "string") {
       this._observeServerControl(event.data);
       this._emitControl("server_to_client", event.data);
@@ -137,6 +185,89 @@ export class WebSocketSource extends DataSource {
       return;
     }
     this._emitError(new TypeError("WebSocket delivered a non-ArrayBuffer binary payload"));
+  }
+
+  _handleSocketError(socket, generation, opening) {
+    if (!this._ownsSocket(socket, generation) || this._isClosingSocket(socket, generation)) return;
+    const error = new Error("WebSocket transport error");
+    this._emitError(error);
+    if (this._opening === opening && !opening.settled) {
+      this._failedOpenSocket = socket;
+      this._settleOpeningReject(opening, error);
+      this._closeAfterOpenFailure(socket, generation);
+    }
+  }
+
+  _handleSocketClose(socket, generation) {
+    if (!this._ownsSocket(socket, generation)) return;
+    const opening = this._opening;
+    const closing = this._closing;
+    if (opening?.socket === socket && opening.generation === generation) {
+      this._settleOpeningReject(opening, new Error("WebSocket closed before opening"));
+    }
+    this.socket = null;
+    this._socketGeneration = 0;
+    this._activeStreamId = null;
+    this._failedOpenSocket = null;
+    this._emitStatus("closed", "WebSocket closed");
+    if (closing?.socket === socket && closing.generation === generation) this._settleClosingResolve(closing);
+  }
+
+  _closeAfterOpenFailure(socket, generation) {
+    if (!this._ownsSocket(socket, generation)) return;
+    const pendingClose = this.close();
+    pendingClose.catch(() => {});
+  }
+
+  _sendControl(controlText, socket = this.socket, generation = this._socketGeneration) {
+    const WebSocketClass = globalThis.WebSocket;
+    if (!this._ownsSocket(socket, generation) || this._isClosingSocket(socket, generation) || !WebSocketClass || socket.readyState !== WebSocketClass.OPEN) {
+      throw new Error("WebSocket is not open");
+    }
+    socket.send(controlText);
+    if (this._ownsSocket(socket, generation) && !this._isClosingSocket(socket, generation)) {
+      this._emitControl("client_to_server", controlText);
+    }
+  }
+
+  _ownsSocket(socket, generation) {
+    return this.socket === socket && this._socketGeneration === generation;
+  }
+
+  _isClosingSocket(socket, generation) {
+    return this._closing?.socket === socket && this._closing.generation === generation;
+  }
+
+  _settleOpeningResolve(opening) {
+    if (this._opening !== opening || opening.settled) return;
+    opening.settled = true;
+    this._opening = null;
+    if (this._openPromise === opening.promise) this._openPromise = null;
+    opening.resolve();
+  }
+
+  _settleOpeningReject(opening, error) {
+    if (this._opening !== opening || opening.settled) return;
+    opening.settled = true;
+    this._opening = null;
+    if (this._openPromise === opening.promise) this._openPromise = null;
+    opening.reject(error);
+  }
+
+  _settleClosingResolve(closing) {
+    if (this._closing !== closing || closing.settled) return;
+    closing.settled = true;
+    this._closing = null;
+    if (this._closePromise === closing.promise) this._closePromise = null;
+    closing.resolve();
+  }
+
+  _settleClosingReject(closing, error) {
+    if (this._closing !== closing || closing.settled) return;
+    closing.settled = true;
+    this._closing = null;
+    if (this._closePromise === closing.promise) this._closePromise = null;
+    closing.reject(error);
   }
 
   _observeServerControl(controlText) {

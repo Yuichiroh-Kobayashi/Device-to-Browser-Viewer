@@ -20,7 +20,7 @@ http://127.0.0.1:8080/?source=synthetic&scenario=stable&autostart=1
 
 The browser self-test page is <http://127.0.0.1:8080/tests/>. It visibly emits
 machine-readable TOTAL, PASS, and FAIL values; the primary validation pass ran
-it in both Chrome and Edge (TOTAL 13, PASS 13, FAIL 0). The static server binds
+it in both Chrome and Edge (TOTAL 14, PASS 14, FAIL 0). The static server binds
 only to 127.0.0.1 by default, does not auto-open a browser, has no telemetry,
 and rejects path traversal.
 
@@ -34,10 +34,11 @@ python3 /home/yu-ichirou/Dev/worktrees/VAMeter-Edu/d2b-vi-planA-live/tests/d2b_v
   --oracle /home/yu-ichirou/Dev/Device-to-Browser-Data-Streaming fixtures/capture/synthetic-live-capture.json
 ~~~
 
-The Node test file contains 13 named semantic checks, including S1–S7 scenario
-smoke coverage, exact capture schema validation, and a legacy-frame-shape
-rejection. The external validator is the authoritative VAMeter live-capture
-check; it validates the fixture against the copied d2b reference oracle.
+The Node test file contains 16 named semantic checks, including S1–S7 scenario
+smoke coverage, exact capture schema validation, orderly stream-end enforcement,
+WebSocket lifecycle races, and a legacy-frame-shape rejection. The external
+validator is the authoritative VAMeter live-capture check; it validates the
+fixture against the copied d2b reference oracle.
 
 ## Layout
 
@@ -73,8 +74,8 @@ harness at <http://127.0.0.1:8000/reference/browser/> reported Chrome
 Viewer checks passed as follows:
 
 - `node --test tests/node-self-tests.mjs` exited 0; direct
-  `node tests/node-self-tests.mjs` reported 13/13.
-- Browser self-tests at `/tests/` reported TOTAL 13, PASS 13, FAIL 0 in both
+  `node tests/node-self-tests.mjs` reported 16/16.
+- Browser self-tests at `/tests/` reported TOTAL 14, PASS 14, FAIL 0 in both
   Chrome and Edge.
 - S1 stable: 250/1; S2 step: 250/1; S3 producer gap: 245/2 (gap 5,
   producer 1); S4 output drop: 247/2 (gap 3, output 1); S5 validity: invalid

@@ -180,6 +180,9 @@ export class SessionAdapter {
     if (message.type === "stream_stopped") {
       if (this.controlState !== "STREAMING" || !this.active) throw new TypeError("stream_stopped outside STREAMING");
       if (message.stream_id !== this.active.streamId) throw new TypeError("stream_stopped stream_id does not match active stream");
+      if (this.decoderState === null || this.decoderState.ended !== true) {
+        throw new TypeError("stream_stopped requires an accepted STREAM_END for the active stream");
+      }
       this.decoderState = null;
       this.active = null;
       this.pendingStart = null;

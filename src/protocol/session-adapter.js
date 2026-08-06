@@ -52,11 +52,14 @@ export class SessionAdapter {
     const state = typeof status === "string" ? status : status?.state;
     if (state === "open") {
       this._openTransport();
+      return true;
     } else if (state === "closed") {
       this._closeTransport();
+      return true;
     } else if (state === "stopped") {
-      this.abortStreaming("source stopped");
+      return this.abortStreaming("source stopped");
     }
+    return false;
   }
 
   _openTransport() {
@@ -96,7 +99,9 @@ export class SessionAdapter {
       this.controlState = this.welcome ? "READY" : "CLOSED";
       this._diagnose("source_abort", reason);
       this._notifySafely();
+      return true;
     }
+    return false;
   }
 
   /**

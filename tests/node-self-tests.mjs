@@ -7,8 +7,10 @@ import { StreamModel } from "../src/model/stream-model.js";
 import { SessionAdapter } from "../src/protocol/session-adapter.js";
 import { relativeDeviceSeconds } from "../src/render/scale.js";
 import { parseLiveCapture, CaptureReplaySource } from "../src/sources/capture-replay-source.js";
+import { DataSource } from "../src/sources/data-source.js";
 import { WebSocketSource } from "../src/sources/websocket-source.js";
 import { liveActionAvailability } from "../src/ui/action-availability.js";
+import { attachSourceActivity } from "../src/ui/source-activity.js";
 import {
   DEFAULT_VI_PARAMETERS, buildSyntheticPlan, makeHelloText, makeWelcomeText, makeStartText, makeStartedText, makeStopText,
   makeStoppedText, makeStreamEndFrame, makeViFrame, SyntheticSource,
@@ -806,6 +808,38 @@ test("live action availability is a pure conservative UI policy", () => {
   for (const [session, sourceStatus, expected] of cases) {
     assert.deepEqual(liveActionAvailability(session, sourceStatus), expected);
   }
+});
+
+test("source activity produces one UI update per event", () => {
+  class CountingSource extends DataSource {
+    constructor() { super("counting"); }
+    emitStatus(state) { this._emitStatus(state); }
+    emitControl(direction, text) { this._emitControl(direction, text); }
+    emitError(error) { this._emitError(error); }
+  }
+  const model = new StreamModel();
+  let updates = 0;
+  let sourceStatus = null;
+  const adapter = new SessionAdapter(model, { onChange: () => { updates += 1; } });
+  const source = new CountingSource();
+  attachSourceActivity(source, adapter, {
+    setSourceStatus(status) { sourceStatus = status; },
+    afterActivity() { updates += 1; },
+  });
+
+  source.emitStatus("connecting");
+  assert.equal(updates, 1, "source-only status should update once");
+  source.emitStatus("open");
+  assert.equal(updates, 2, "adapter-owned transport status should update once");
+  assert.equal(sourceStatus.state, "open");
+  source.emitControl("client_to_server", makeHelloText());
+  assert.equal(updates, 3, "accepted client control should update once");
+  source.emitControl("server_to_client", makeWelcomeText());
+  assert.equal(updates, 4, "accepted server control should update once");
+  source.emitError(new Error("counted source error"));
+  assert.equal(updates, 5, "source error should update once");
+  source.emitStatus("stopped");
+  assert.equal(updates, 6, "non-streaming stopped status should update once");
 });
 
 test("checked-in VAMeter fixture exposes and requests the exact live V/I stream", async () => {

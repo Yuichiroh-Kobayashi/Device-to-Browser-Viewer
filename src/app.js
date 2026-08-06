@@ -5,6 +5,7 @@ import { CaptureReplaySource } from "./sources/capture-replay-source.js";
 import { defaultWebSocketEndpoint, WebSocketSource } from "./sources/websocket-source.js";
 import { WaveformCanvas } from "./render/waveform-canvas.js";
 import { liveActionAvailability } from "./ui/action-availability.js";
+import { attachSourceActivity } from "./ui/source-activity.js";
 
 const element = (id) => document.getElementById(id);
 const controls = {
@@ -122,19 +123,10 @@ function afterActivity() {
 }
 
 function attachSource(nextSource) {
-  nextSource.onControl((control) => {
-    // WebSocketSource commits outbound controls through adapter authority and
-    // emits only raw server controls. Keep synthetic/capture replay ingestion.
-    if (!(nextSource instanceof WebSocketSource) || control.direction !== "client_to_server") adapter.handleControl(control);
-    afterActivity();
+  attachSourceActivity(nextSource, adapter, {
+    setSourceStatus(status) { sourceStatus = status; },
+    afterActivity,
   });
-  nextSource.onBinary((buffer) => { adapter.handleBinary(buffer); afterActivity(); });
-  nextSource.onStatus((status) => {
-    sourceStatus = status;
-    adapter.notifyTransportStatus(status);
-    afterActivity();
-  });
-  nextSource.onError((error) => { adapter.handleError(error); afterActivity(); });
 }
 
 async function replaceSource() {

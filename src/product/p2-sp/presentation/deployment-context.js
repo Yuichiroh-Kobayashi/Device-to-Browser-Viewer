@@ -67,6 +67,10 @@ function sha256FallbackDigest(view) {
 
 export async function sha256RawBytes(bytes, cryptoImpl = globalThis.crypto) {
   const view = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (cryptoImpl === globalThis.crypto && globalThis.crypto?.subtle?.digest) {
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", view);
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
   if (cryptoImpl?.subtle?.digest) {
     const digest = await cryptoImpl.subtle.digest("SHA-256", view);
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");

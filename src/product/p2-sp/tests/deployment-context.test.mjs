@@ -13,7 +13,15 @@ const validCapabilities = Object.freeze({
     profile: "vi-measurement", parameter_sets: [{ sample_format: "vi-f32le", channel_count: 2, channel_mask: 3, sample_rate: { numerator: 0, denominator: 0 } }],
   }] }],
 });
-const validStatus = Object.freeze({ protocol: "d2b-stream", version: "0.1", state: "idle", uptime_us: 1, producer_drop_count: 0, output_queue_drop_count: 0, connected_client_count: 0 });
+const validStatus = Object.freeze({ protocol: "d2b-stream", version: "0.1", state: "idle", uptime_us: 1, producer_drop_count: 0, output_queue_drop_count: 0, queued_sample_count: 0, connected_client_count: 0 });
+// Exact physical status captured from the V6-B device-hosted gate
+// (20260819-231936-g4-v6b-device-hosted-viewer-browser/http/status-pre-browser.json),
+// reproduced verbatim to prove this is the concrete contract being repaired, not a
+// hypothetical shape.
+const capturedV6bStatus = Object.freeze({
+  protocol: "d2b-stream", version: "0.1", state: "idle", connected_client_count: 0,
+  producer_drop_count: 0, output_queue_drop_count: 0, queued_sample_count: 0, uptime_us: 483086548,
+});
 
 function responsesFor({ manifest = raw, bundleId = hash, capabilities = validCapabilities, status = validStatus } = {}) {
   return {
@@ -43,6 +51,21 @@ assert.equal((await bootstrap({ status: {} })).bundleStatus, "identity-unavailab
 assert.equal((await bootstrap({ status: { ...validStatus, active_stream_id: 7 } })).bundleStatus, "identity-unavailable");
 assert.equal((await bootstrap({ status: { ...validStatus, producer_drop_count: Number.MAX_SAFE_INTEGER + 1 } })).bundleStatus, "identity-unavailable");
 assert.equal((await bootstrap({ status: { ...validStatus, unknown: true } })).bundleStatus, "identity-unavailable");
+
+// --- queued_sample_count: optional, non-negative safe-integer public counter (V6-B repair) ---
+// A. exact V6-B physical status JSON (including queued_sample_count) is accepted.
+const capturedResult = await bootstrap({ status: capturedV6bStatus });
+assert.equal(capturedResult.startAllowed, true);
+assert.equal(capturedResult.bundleStatus, "matched");
+// B. queued_sample_count omitted entirely: still accepted (it remains optional).
+const { queued_sample_count: _omittedQueuedSampleCount, ...statusWithoutQueuedSampleCount } = validStatus;
+assert.equal((await bootstrap({ status: statusWithoutQueuedSampleCount })).startAllowed, true);
+// Negative: present but invalid values must still fail closed.
+assert.equal((await bootstrap({ status: { ...validStatus, queued_sample_count: -1 } })).bundleStatus, "identity-unavailable");
+assert.equal((await bootstrap({ status: { ...validStatus, queued_sample_count: 0.5 } })).bundleStatus, "identity-unavailable");
+assert.equal((await bootstrap({ status: { ...validStatus, queued_sample_count: Number.MAX_SAFE_INTEGER + 1 } })).bundleStatus, "identity-unavailable");
+console.log("PASS queued_sample_count accepted as optional non-negative safe integer; invalid/out-of-range values remain fail-closed");
+
 assert.equal((await bootstrap({ manifest: reserialized, bundleId: hash })).bundleStatus, "mismatch");
 assert.equal(mismatch.bundleStatus, "mismatch");
 assert.equal(mismatch.message, "Viewerの更新状態が一致しません");

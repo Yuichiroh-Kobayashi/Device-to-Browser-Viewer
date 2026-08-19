@@ -1,7 +1,7 @@
 import { validateCapabilities } from "../../source-export/viewer/src/protocol/d2b-reference/capabilities-validator.js";
 
 const PUBLIC_STATUS_REQUIRED_FIELDS = Object.freeze(["protocol", "version", "state", "uptime_us"]);
-const PUBLIC_STATUS_COUNTER_FIELDS = Object.freeze(["producer_drop_count", "output_queue_drop_count", "connected_client_count"]);
+const PUBLIC_STATUS_COUNTER_FIELDS = Object.freeze(["producer_drop_count", "output_queue_drop_count", "queued_sample_count", "connected_client_count"]);
 const PUBLIC_STATUS_FIELDS = new Set([...PUBLIC_STATUS_REQUIRED_FIELDS, ...PUBLIC_STATUS_COUNTER_FIELDS]);
 
 const SHA256_ROUND_CONSTANTS = Object.freeze([

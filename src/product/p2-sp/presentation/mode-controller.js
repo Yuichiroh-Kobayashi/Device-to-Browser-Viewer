@@ -37,3 +37,27 @@ export function createPresentationCoordinator({ mount, update }) {
     get mountedMode() { return mountedMode; },
   });
 }
+
+export function createAnimationFrameQueue(scheduler, render) {
+  const requestAnimationFrame = scheduler?.requestAnimationFrame?.bind(scheduler);
+  const cancelAnimationFrame = scheduler?.cancelAnimationFrame?.bind(scheduler);
+  if (!requestAnimationFrame || !cancelAnimationFrame || typeof render !== "function") {
+    throw new TypeError("animation frame scheduler and render callback are required");
+  }
+  let pending = null;
+  return Object.freeze({
+    request() {
+      if (pending !== null) return;
+      pending = requestAnimationFrame(() => {
+        pending = null;
+        render();
+      });
+    },
+    cancel() {
+      if (pending === null) return;
+      cancelAnimationFrame(pending);
+      pending = null;
+    },
+    get isPending() { return pending !== null; },
+  });
+}

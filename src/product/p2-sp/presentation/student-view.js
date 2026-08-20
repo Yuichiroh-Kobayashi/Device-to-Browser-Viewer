@@ -26,7 +26,10 @@ export function studentMarkup() {
     <p class="deployment" data-live="deployment"></p>
     <p class="quality" data-live="quality"></p>
     <div class="values"><output data-live="voltage"></output><output data-live="current"></output></div>
-    <div class="graphs"><section aria-label="Voltage graph">Voltage graph: device-time axis; gaps are not joined</section><section aria-label="Current graph">Current graph: device-time axis; invalid is not zero</section></div>
+    <div class="graphs">
+      <section class="graph-panel" aria-label="Voltage graph"><canvas data-waveform="voltage" role="img" aria-label="Voltage graph over device time; gaps are not joined"></canvas></section>
+      <section class="graph-panel" aria-label="Current graph"><canvas data-waveform="current" role="img" aria-label="Current graph over device time; invalid samples are not zero"></canvas></section>
+    </div>
     <p class="error" data-live="error"></p>
     <p class="error" data-live="action-error"></p>
     <div class="actions">${actionMarkup()}<span data-live="busy"></span></div>

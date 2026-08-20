@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createBoundedActionDiagnostics, createPresentationCoordinator } from "../presentation/mode-controller.js";
+import { createAnimationFrameQueue, createBoundedActionDiagnostics, createPresentationCoordinator } from "../presentation/mode-controller.js";
 import { studentActionEnabled } from "../presentation/student-view.js";
 import { professionalMarkup } from "../presentation/professional-view.js";
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
@@ -18,7 +18,11 @@ assert.match(css, /@media\s*\(min-width:\s*1024px\)[\s\S]*?\.graphs\s*\{\s*grid-
 assert.match(css, /min-height:\s*44px/);
 assert.match(css, /focus-visible/);
 assert.match(css, /prefers-reduced-motion/);
+assert.match(css, /\.graph-panel canvas[\s\S]*?width:\s*100%[\s\S]*?height:\s*18rem/);
 assert.match(student, /data-live="deployment"/);
+assert.match(student, /<canvas data-waveform="voltage"/);
+assert.match(student, /<canvas data-waveform="current"/);
+assert.doesNotMatch(student, /Voltage graph: device-time axis|Current graph: device-time axis/);
 assert.match(student, /deploymentNode\.dataset\.deploymentStatus/);
 assert.match(student, /deployment\.message/);
 assert.match(student, /data-action="\$\{action\}"/);
@@ -66,6 +70,95 @@ assert.deepEqual(diagnostics.snapshot(), {
   lastAction: "stop",
   retained: ["unknown", "stop", "unknown", "stop", "unknown", "stop", "unknown", "stop"],
 });
+const queuedFrames = [];
+const cancelledFrames = [];
+let graphRenderCount = 0;
+let nextFrameHandle = 1;
+const graphQueue = createAnimationFrameQueue({
+  requestAnimationFrame(callback) { queuedFrames.push(callback); return nextFrameHandle++; },
+  cancelAnimationFrame(handle) { cancelledFrames.push(handle); },
+}, () => { graphRenderCount += 1; });
+for (let frame = 0; frame < 20; frame += 1) graphQueue.request();
+assert.equal(queuedFrames.length, 1);
+assert.equal(graphRenderCount, 0);
+queuedFrames.shift()();
+assert.equal(graphRenderCount, 1);
+assert.equal(graphQueue.isPending, false);
+graphQueue.request();
+graphQueue.cancel();
+assert.deepEqual(cancelledFrames, [2]);
+
+class TraceContext {
+  constructor() { this.path = []; this.strokes = []; this.rects = []; this.text = []; }
+  setTransform() {}
+  clearRect() {}
+  fillRect(x, y, width, height) { this.rects.push({ style: this.fillStyle, x, y, width, height }); }
+  fillText(value) { this.text.push(String(value)); }
+  beginPath() { this.path = []; }
+  moveTo(x, y) { this.path.push({ kind: "move", x, y }); }
+  lineTo(x, y) { this.path.push({ kind: "line", x, y }); }
+  stroke() { this.strokes.push({ style: this.strokeStyle, path: this.path.map((entry) => ({ ...entry })) }); }
+  setLineDash() {}
+  save() {}
+  translate() {}
+  rotate() {}
+  restore() {}
+}
+class TraceCanvas {
+  constructor() { this.context = new TraceContext(); this.width = 0; this.height = 0; }
+  getContext() { return this.context; }
+  getBoundingClientRect() { return { width: 640, height: 300 }; }
+}
+globalThis.HTMLCanvasElement = TraceCanvas;
+globalThis.ResizeObserver = class { observe() {} disconnect() {} };
+globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
+const { WaveformCanvas } = await import("../../source-export/viewer/src/render/waveform-canvas.js");
+const record = ({ timestamp, voltage, current, segment = 1, voltageSegment = 1, currentSegment = 1 }) => ({
+  stream_id: 1,
+  timestamp_us: BigInt(timestamp),
+  voltage_V: voltage,
+  current_A: current,
+  segment_id: segment,
+  voltage_segment_id: voltage === null ? null : voltageSegment,
+  current_segment_id: current === null ? null : currentSegment,
+});
+function traceFor(canvas, style) { return canvas.context.strokes.findLast((stroke) => stroke.style === style); }
+const zeroRecords = [
+  record({ timestamp: 0, voltage: 0, current: 0 }),
+  record({ timestamp: 40_000, voltage: 0, current: 0 }),
+];
+const zeroVoltageCanvas = new TraceCanvas();
+new WaveformCanvas(zeroVoltageCanvas, { channel: "voltage", unit: "V", title: "Voltage" }).draw(zeroRecords, []);
+const zeroVoltageTrace = traceFor(zeroVoltageCanvas, "#6dd6ff");
+assert.deepEqual(zeroVoltageTrace.path.map((entry) => entry.kind), ["move", "line"]);
+assert.equal(zeroVoltageTrace.path[0].y, zeroVoltageTrace.path[1].y);
+assert.equal(zeroVoltageCanvas.context.text.includes("No finite valid device measurements in window"), false);
+const zeroCurrentCanvas = new TraceCanvas();
+new WaveformCanvas(zeroCurrentCanvas, { channel: "current", unit: "A", title: "Current" }).draw(zeroRecords, []);
+const zeroCurrentTrace = traceFor(zeroCurrentCanvas, "#87f4b4");
+assert.deepEqual(zeroCurrentTrace.path.map((entry) => entry.kind), ["move", "line"]);
+assert.equal(zeroCurrentTrace.path[0].y, zeroCurrentTrace.path[1].y);
+const nonzeroCanvas = new TraceCanvas();
+new WaveformCanvas(nonzeroCanvas, { channel: "voltage", unit: "V", title: "Voltage" }).draw([
+  record({ timestamp: 0, voltage: 0, current: 0 }),
+  record({ timestamp: 40_000, voltage: 2, current: 0 }),
+], []);
+const nonzeroTrace = traceFor(nonzeroCanvas, "#6dd6ff");
+assert.notEqual(nonzeroTrace.path[0].y, nonzeroTrace.path[1].y);
+const gapCanvas = new TraceCanvas();
+new WaveformCanvas(gapCanvas, { channel: "voltage", unit: "V", title: "Voltage" }).draw([
+  record({ timestamp: 0, voltage: 1, current: 0, segment: 1, voltageSegment: 1 }),
+  record({ timestamp: 40_000, voltage: 2, current: 0, segment: 2, voltageSegment: 2 }),
+], []);
+assert.deepEqual(traceFor(gapCanvas, "#6dd6ff").path.map((entry) => entry.kind), ["move", "move"]);
+const invalidCanvas = new TraceCanvas();
+new WaveformCanvas(invalidCanvas, { channel: "voltage", unit: "V", title: "Voltage" }).draw([
+  record({ timestamp: 0, voltage: 1, current: 0, voltageSegment: 1 }),
+  record({ timestamp: 40_000, voltage: null, current: 0 }),
+  record({ timestamp: 80_000, voltage: 2, current: 0, voltageSegment: 2 }),
+], []);
+assert.deepEqual(traceFor(invalidCanvas, "#6dd6ff").path.map((entry) => entry.kind), ["move", "move"]);
+assert.equal(invalidCanvas.context.rects.some((entry) => entry.style === "#d67eff"), true);
 const professionalError = professionalMarkup({
   adapter: { summary: () => ({ controlState: "READY", streamId: null, profile: null, diagnosticCount: 1, lastError: { code: "c".repeat(97), message: "m".repeat(513) } }) },
   model: { latest: null, sampleCount: 0, segmentCount: 0, sequenceGapCount: 0, producerOverflowCount: 0, outputQueueDropCount: 0 },

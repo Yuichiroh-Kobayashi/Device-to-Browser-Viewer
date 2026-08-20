@@ -5,11 +5,17 @@ import { professionalMarkup, updateProfessionalPresentation } from "./presentati
 import { assessDeployment, bootstrapDeviceHosted } from "./presentation/deployment-context.js";
 import { WaveformCanvas } from "../source-export/viewer/src/render/waveform-canvas.js";
 
+const BUILD_INCLUDE_PROFESSIONAL = typeof __INCLUDE_PROFESSIONAL__ === "undefined" ? true : __INCLUDE_PROFESSIONAL__;
+
+export function professionalModeAllowed(buildIncludeProfessional, runtimeRequested, mode) {
+  return buildIncludeProfessional === true && runtimeRequested !== false && mode === "professional";
+}
+
 export function createViewerApplication({
   root,
   owner = createRuntimeOwner(),
   deploymentTarget = typeof __DEPLOYMENT_TARGET__ === "undefined" ? "external-development" : __DEPLOYMENT_TARGET__,
-  includeProfessional = typeof __INCLUDE_PROFESSIONAL__ === "undefined" ? true : __INCLUDE_PROFESSIONAL__,
+  includeProfessional = true,
   pageLocation = globalThis.location,
   animationScheduler = globalThis,
 } = {}) {
@@ -47,17 +53,25 @@ export function createViewerApplication({
 
   function update(mode) {
     const diagnostic = actionDiagnostics.snapshot();
-    if (includeProfessional && mode === "professional") updateProfessionalPresentation(root, owner, deployment, diagnostic);
-    else {
-      updateStudentPresentation(root, owner, deployment, diagnostic);
-      waveformRender.request();
+    if (BUILD_INCLUDE_PROFESSIONAL) {
+      if (professionalModeAllowed(BUILD_INCLUDE_PROFESSIONAL, includeProfessional, mode)) {
+        updateProfessionalPresentation(root, owner, deployment, diagnostic);
+        return;
+      }
     }
+    updateStudentPresentation(root, owner, deployment, diagnostic);
+    waveformRender.request();
   }
 
   function mount(mode) {
     destroyWaveforms();
-    const professional = includeProfessional && mode === "professional";
-    root.innerHTML = `${professional ? professionalMarkup(owner, deployment) : studentMarkup()}${includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : ""}`;
+    let professional = false;
+    if (BUILD_INCLUDE_PROFESSIONAL) {
+      professional = professionalModeAllowed(BUILD_INCLUDE_PROFESSIONAL, includeProfessional, mode);
+      root.innerHTML = `${professional ? professionalMarkup(owner, deployment) : studentMarkup()}${includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : ""}`;
+    } else {
+      root.innerHTML = studentMarkup();
+    }
     if (!professional) mountWaveforms();
     const toggle = root.querySelector("#toggle");
     if (toggle) toggle.onclick = () => controller.toggle();

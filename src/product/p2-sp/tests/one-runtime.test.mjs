@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createRuntimeOwner } from "../runtime-owner.js";
 import { ModeController } from "../presentation/mode-controller.js";
+import { setDisplayWindowSeconds } from "../app.js";
 import { makeWelcomeText, makeStartedText, makeStoppedText, makeViFrame, makeStreamEndFrame } from "../../source-export/viewer/src/sources/synthetic-source.js";
 
 const counts = { constructor: 0, send: 0, close: 0, binary: 0 };
@@ -33,6 +34,13 @@ function toggle(context, isolate = false) {
 }
 let opening = source.open(); sockets.at(-1).driveOpen(); await opening; sockets.at(-1).driveMessage(makeWelcomeText()); toggle("READY");
 await source.start(); sockets.at(-1).driveMessage(makeStartedText(7, "live-vi")); sockets.at(-1).driveMessage(makeViFrame({ streamId: 7, sequence: 1n, timestampUs: 1000n, flags: 1, voltage: 1, current: .1 })); assert.equal(accepted.at(-1), true); assert.ok(owner.model.sampleCount > 0); toggle("STREAMING");
+const windowIdentity = owner.snapshot(); const windowCounts = { ...counts }; const windowStreamId = owner.adapter.summary().streamId;
+assert.equal(owner.model.displayWindowSeconds, 60);
+for (const seconds of [10, 30, 60]) { setDisplayWindowSeconds(owner, seconds); assert.equal(owner.model.displayWindowSeconds, seconds); }
+assert.throws(() => setDisplayWindowSeconds(owner, 20), RangeError);
+assert.throws(() => setDisplayWindowSeconds(owner, "invalid"), RangeError);
+assert.equal(owner.source, windowIdentity.source); assert.equal(owner.adapter, windowIdentity.adapter); assert.equal(owner.model, windowIdentity.model);
+assert.equal(owner.adapter.summary().streamId, windowStreamId); assert.deepEqual(counts, windowCounts);
 sockets.at(-1).driveMessage(makeViFrame({ streamId: 7, sequence: 4n, timestampUs: 4000n, flags: 4, voltage: 1, current: .1 })); assert.equal(accepted.at(-1), true); toggle("after sequence gap");
 sockets.at(-1).driveMessage(makeViFrame({ streamId: 7, sequence: 5n, timestampUs: 5000n, validMask: 1, voltage: 1, current: 0 })); assert.equal(accepted.at(-1), true); toggle("after channel-specific invalid");
 await source.stop(); sockets.at(-1).driveMessage(makeStreamEndFrame({ streamId: 7, sequence: 6n, timestampUs: 6000n })); sockets.at(-1).driveMessage(makeStoppedText(7)); await source.close(); toggle("CLOSED");

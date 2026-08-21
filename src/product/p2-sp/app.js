@@ -11,6 +11,22 @@ export function professionalModeAllowed(buildIncludeProfessional, runtimeRequest
   return buildIncludeProfessional === true && runtimeRequested !== false && mode === "professional";
 }
 
+const DISPLAY_WINDOW_SECONDS = Object.freeze([10, 30, 60]);
+
+export function setDisplayWindowSeconds(owner, value) {
+  const seconds = Number(value);
+  if (!DISPLAY_WINDOW_SECONDS.includes(seconds)) throw new RangeError("display window must be exactly 10, 30, or 60 seconds");
+  owner.model.setDisplayWindowSeconds(seconds);
+}
+
+function displayWindowMarkup(seconds) {
+  return `<label class="display-window">Display window
+    <select data-display-window aria-label="Device-time display window">
+      ${DISPLAY_WINDOW_SECONDS.map((value) => `<option value="${value}"${value === seconds ? " selected" : ""}>${value} seconds</option>`).join("")}
+    </select>
+  </label>`;
+}
+
 export function createViewerApplication({
   root,
   owner = createRuntimeOwner(),
@@ -20,7 +36,9 @@ export function createViewerApplication({
   animationScheduler = globalThis,
 } = {}) {
   if (!root) throw new TypeError("viewer root is required");
-  let deployment = assessDeployment({ target: "external-development", explicitDeveloperConfiguration: true });
+  let deployment = deploymentTarget === "device-hosted"
+    ? assessDeployment({ target: "device-hosted" })
+    : assessDeployment({ target: "external-development", explicitDeveloperConfiguration: true });
   const actionDiagnostics = createBoundedActionDiagnostics();
   let controller;
   let presentation;
@@ -56,6 +74,7 @@ export function createViewerApplication({
     if (BUILD_INCLUDE_PROFESSIONAL) {
       if (professionalModeAllowed(BUILD_INCLUDE_PROFESSIONAL, includeProfessional, mode)) {
         updateProfessionalPresentation(root, owner, deployment, diagnostic);
+        waveformRender.request();
         return;
       }
     }
@@ -68,11 +87,20 @@ export function createViewerApplication({
     let professional = false;
     if (BUILD_INCLUDE_PROFESSIONAL) {
       professional = professionalModeAllowed(BUILD_INCLUDE_PROFESSIONAL, includeProfessional, mode);
-      root.innerHTML = `${professional ? professionalMarkup(owner, deployment) : studentMarkup()}${includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : ""}`;
+      root.innerHTML = `${professional ? professionalMarkup(owner, deployment) : studentMarkup()}${displayWindowMarkup(owner.model.displayWindowSeconds)}${includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : ""}`;
     } else {
-      root.innerHTML = studentMarkup();
+      root.innerHTML = `${studentMarkup()}${displayWindowMarkup(owner.model.displayWindowSeconds)}`;
     }
-    if (!professional) mountWaveforms();
+    mountWaveforms();
+    const displayWindow = root.querySelector("[data-display-window]");
+    displayWindow.onchange = () => {
+      try {
+        setDisplayWindowSeconds(owner, displayWindow.value);
+        waveformRender.request();
+      } catch {
+        displayWindow.value = String(owner.model.displayWindowSeconds);
+      }
+    };
     const toggle = root.querySelector("#toggle");
     if (toggle) toggle.onclick = () => controller.toggle();
     root.querySelectorAll("[data-action]").forEach((button) => {

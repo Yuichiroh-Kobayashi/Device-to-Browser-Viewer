@@ -23,10 +23,12 @@ const capturedV6bStatus = Object.freeze({
   producer_drop_count: 0, output_queue_drop_count: 0, queued_sample_count: 0, uptime_us: 483086548,
 });
 
-function responsesFor({ manifest = raw, bundleId = hash, capabilities = validCapabilities, status = validStatus } = {}) {
+function responsesFor({ manifest = raw, bundleId = hash, displayName = "Both", omitDisplayName = false, capabilities = validCapabilities, status = validStatus } = {}) {
+  const device = { viewer_bundle_id: bundleId };
+  if (!omitDisplayName) device.display_name = displayName;
   return {
     "/viewer/asset-manifest.json": new Response(manifest),
-    "/viewer/device.json": new Response(JSON.stringify({ viewer_bundle_id: bundleId })),
+    "/viewer/device.json": new Response(JSON.stringify(device)),
     "/d2b/v0/capabilities": new Response(JSON.stringify(capabilities)),
     "/d2b/v0/status": new Response(JSON.stringify(status)),
   };
@@ -37,8 +39,8 @@ async function bootstrap(options) {
   return bootstrapDeviceHosted({ fetcher: async (url) => responses[url], pageAuthority: "http://a/", configuredWsAuthority: "ws://a/d2b/v0/stream" });
 }
 
-const ok = assessDeployment({ target: "device-hosted", pageAuthority: "http://a/", configuredWsAuthority: "ws://a/d2b/v0/stream", manifestHash: hash, deviceBundleId: hash });
-const mismatch = assessDeployment({ target: "device-hosted", pageAuthority: "http://a/", configuredWsAuthority: "ws://a/d2b/v0/stream", manifestHash: hash, deviceBundleId: "y" });
+const ok = assessDeployment({ target: "device-hosted", pageAuthority: "http://a/", configuredWsAuthority: "ws://a/d2b/v0/stream", manifestHash: hash, deviceBundleId: hash, displayName: "Both" });
+const mismatch = assessDeployment({ target: "device-hosted", pageAuthority: "http://a/", configuredWsAuthority: "ws://a/d2b/v0/stream", manifestHash: hash, deviceBundleId: "y", displayName: "Both" });
 const unavailable = assessDeployment({ target: "device-hosted", pageAuthority: "http://a/", configuredWsAuthority: "ws://a/d2b/v0/stream" });
 const explicitDevelopment = assessDeployment({ target: "external-development", explicitDeveloperConfiguration: true });
 const implicitDevelopment = assessDeployment({ target: "external-development" });
@@ -46,6 +48,15 @@ const implicitDevelopment = assessDeployment({ target: "external-development" })
 assert.notEqual(hash, reserializedHash);
 assert.equal(ok.startAllowed, true);
 assert.equal((await bootstrap()).startAllowed, true);
+for (const displayName of ["Voltage", "Current", "Both"]) {
+  const result = await bootstrap({ displayName });
+  assert.equal(result.startAllowed, true);
+  assert.equal(result.displayName, displayName);
+}
+assert.equal((await bootstrap({ omitDisplayName: true })).bundleStatus, "identity-unavailable");
+for (const displayName of ["", "voltage", "CURRENT", "Both ", "Unknown", null, 1]) {
+  assert.equal((await bootstrap({ displayName })).bundleStatus, "identity-unavailable");
+}
 assert.equal((await bootstrap({ capabilities: {} })).bundleStatus, "identity-unavailable");
 assert.equal((await bootstrap({ status: {} })).bundleStatus, "identity-unavailable");
 assert.equal((await bootstrap({ status: { ...validStatus, active_stream_id: 7 } })).bundleStatus, "identity-unavailable");

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createAnimationFrameQueue, createBoundedActionDiagnostics, createPresentationCoordinator } from "../presentation/mode-controller.js";
-import { studentActionEnabled } from "../presentation/student-view.js";
+import { studentActionEnabled, studentGraphVisibility } from "../presentation/student-view.js";
 import { professionalMarkup } from "../presentation/professional-view.js";
 import { professionalModeAllowed } from "../app.js";
+import { displayValue } from "../presentation/view-state.js";
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const css = readFileSync(new URL("../app.css", import.meta.url), "utf8");
 const student = readFileSync(new URL("../presentation/student-view.js", import.meta.url), "utf8");
@@ -23,6 +24,12 @@ assert.match(css, /\.graph-panel canvas[\s\S]*?width:\s*100%[\s\S]*?height:\s*18
 assert.match(student, /data-live="deployment"/);
 assert.match(student, /<canvas data-waveform="voltage"/);
 assert.match(student, /<canvas data-waveform="current"/);
+assert.deepEqual(studentGraphVisibility({ target: "device-hosted", displayName: "Voltage" }), { voltage: true, current: false });
+assert.deepEqual(studentGraphVisibility({ target: "device-hosted", displayName: "Current" }), { voltage: false, current: true });
+assert.deepEqual(studentGraphVisibility({ target: "device-hosted", displayName: "Both" }), { voltage: true, current: true });
+assert.deepEqual(studentGraphVisibility({ target: "device-hosted" }), { voltage: false, current: false });
+assert.deepEqual(studentGraphVisibility({ target: "external-development" }), { voltage: true, current: true });
+assert.equal(displayValue(1.23456, "V", "current"), "1.235 V (current)");
 assert.doesNotMatch(student, /Voltage graph: device-time axis|Current graph: device-time axis/);
 assert.match(student, /deploymentNode\.dataset\.deploymentStatus/);
 assert.match(student, /deployment\.message/);
@@ -170,13 +177,18 @@ assert.deepEqual(traceFor(invalidCanvas, "#6dd6ff").path.map((entry) => entry.ki
 assert.equal(invalidCanvas.context.rects.some((entry) => entry.style === "#d67eff"), true);
 const professionalError = professionalMarkup({
   adapter: { summary: () => ({ controlState: "READY", streamId: null, profile: null, diagnosticCount: 1, lastError: { code: "c".repeat(97), message: "m".repeat(513) } }) },
-  model: { latest: null, sampleCount: 0, segmentCount: 0, sequenceGapCount: 0, producerOverflowCount: 0, outputQueueDropCount: 0 },
+  source: { state: "open" },
+  model: { latest: null, sampleCount: 0, segmentCount: 0, summary: () => ({ sequenceGapCount: 0, sequenceGapSamples: "0", producerOverflowCount: 0, outputQueueDropCount: 0, invalidVoltageCount: 0, invalidCurrentCount: 0, viewerEvictionCount: 0, viewerWindowEvictionCount: 0, viewerCapacityEvictionCount: 0, bufferUsage: 0, bufferCapacity: 4096, markerUsage: 0, markerCapacity: 512 }) },
 }, { target: "device-hosted", bundleStatus: "matched" });
+assert.match(professionalError, /data-waveform="voltage"/);
+assert.match(professionalError, /data-waveform="current"/);
+assert.match(professionalError, /producer overflow \/ output queue drops/);
 assert.match(professionalError, /<dt>last error code\/message<\/dt><dd data-live="last-error">c{96} \/ m{512}<\/dd>/);
 assert.doesNotMatch(professionalError, /c{97}|m{513}/);
 const hostileProfessionalError = professionalMarkup({
   adapter: { summary: () => ({ controlState: "READY", streamId: null, profile: null, diagnosticCount: 1, lastError: { code: "&<>\"'", message: "<img src=x onerror=alert(1)>&\"'" } }) },
-  model: { latest: null, sampleCount: 0, segmentCount: 0, sequenceGapCount: 0, producerOverflowCount: 0, outputQueueDropCount: 0 },
+  source: { state: "open" },
+  model: { latest: null, sampleCount: 0, segmentCount: 0, summary: () => ({ sequenceGapCount: 0, sequenceGapSamples: "0", producerOverflowCount: 0, outputQueueDropCount: 0, invalidVoltageCount: 0, invalidCurrentCount: 0, viewerEvictionCount: 0, viewerWindowEvictionCount: 0, viewerCapacityEvictionCount: 0, bufferUsage: 0, bufferCapacity: 4096, markerUsage: 0, markerCapacity: 512 }) },
 }, { target: "device-hosted", bundleStatus: "matched" });
 assert.match(hostileProfessionalError, /<dt>last error code\/message<\/dt><dd data-live="last-error">&amp;&lt;&gt;&quot;&#39; \/ &lt;img src=x onerror=alert\(1\)&gt;&amp;&quot;&#39;<\/dd>/);
 assert.doesNotMatch(hostileProfessionalError, /<img\b/);

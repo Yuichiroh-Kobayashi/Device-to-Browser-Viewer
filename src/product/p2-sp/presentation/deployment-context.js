@@ -3,6 +3,7 @@ import { validateCapabilities } from "../../source-export/viewer/src/protocol/d2
 const PUBLIC_STATUS_REQUIRED_FIELDS = Object.freeze(["protocol", "version", "state", "uptime_us"]);
 const PUBLIC_STATUS_COUNTER_FIELDS = Object.freeze(["producer_drop_count", "output_queue_drop_count", "queued_sample_count", "connected_client_count"]);
 const PUBLIC_STATUS_FIELDS = new Set([...PUBLIC_STATUS_REQUIRED_FIELDS, ...PUBLIC_STATUS_COUNTER_FIELDS]);
+const DISPLAY_NAMES = new Set(["Voltage", "Current", "Both"]);
 
 const SHA256_ROUND_CONSTANTS = Object.freeze([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -85,13 +86,13 @@ function samePageAndWsAuthority(pageAuthority, configuredWsAuthority) {
   } catch { return false; }
 }
 
-export function assessDeployment({ target, pageAuthority, configuredWsAuthority, manifestHash, deviceBundleId, explicitDeveloperConfiguration = false }) {
+export function assessDeployment({ target, pageAuthority, configuredWsAuthority, manifestHash, deviceBundleId, displayName, explicitDeveloperConfiguration = false }) {
   if (target === "device-hosted") {
-    if (!manifestHash || !deviceBundleId) return Object.freeze({ target, startAllowed: false, message: "機器情報を確認できません", bundleStatus: "identity-unavailable" });
+    if (!manifestHash || !deviceBundleId || !DISPLAY_NAMES.has(displayName)) return Object.freeze({ target, startAllowed: false, message: "機器情報を確認できません", bundleStatus: "identity-unavailable" });
     const sameAuthority = samePageAndWsAuthority(pageAuthority, configuredWsAuthority);
     const sameBundle = manifestHash === deviceBundleId;
     if (!sameBundle) return Object.freeze({ target, startAllowed: false, message: "Viewerの更新状態が一致しません", bundleStatus: "mismatch" });
-    return Object.freeze({ target, startAllowed: sameAuthority, message: sameAuthority ? "一致" : "Viewerと接続先が一致しません", bundleStatus: sameAuthority ? "matched" : "authority-mismatch" });
+    return Object.freeze({ target, startAllowed: sameAuthority, message: sameAuthority ? "一致" : "Viewerと接続先が一致しません", bundleStatus: sameAuthority ? "matched" : "authority-mismatch", displayName });
   }
   if (target === "external-development" && explicitDeveloperConfiguration) return Object.freeze({ target, startAllowed: true, message: "developer configuration", bundleStatus: "not-required" });
   return Object.freeze({ target: "external-development", startAllowed: false, message: "explicit developer configuration required", bundleStatus: "not-required" });
@@ -127,6 +128,6 @@ export async function bootstrapDeviceHosted({ fetcher = fetch, pageAuthority, co
     const capabilities = validateCapabilities(await capabilitiesResponse.json());
     const status = await statusResponse.json();
     if (!advertisesLiveVi(capabilities) || !isRedactedPublicStatus(status)) throw new Error("invalid public status");
-    return assessDeployment({ target: "device-hosted", pageAuthority, configuredWsAuthority, manifestHash, deviceBundleId: device.viewer_bundle_id });
+    return assessDeployment({ target: "device-hosted", pageAuthority, configuredWsAuthority, manifestHash, deviceBundleId: device.viewer_bundle_id, displayName: device.display_name });
   } catch { return Object.freeze({ target: "device-hosted", startAllowed: false, message: "機器情報を確認できません", bundleStatus: "identity-unavailable" }); }
 }

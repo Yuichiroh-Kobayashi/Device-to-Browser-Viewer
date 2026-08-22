@@ -4,6 +4,8 @@ import { SYNTHETIC_SCENARIOS, SyntheticSource } from "./sources/synthetic-source
 import { CaptureReplaySource } from "./sources/capture-replay-source.js";
 import { defaultWebSocketEndpoint, WebSocketSource } from "./sources/websocket-source.js";
 import { WaveformCanvas } from "./render/waveform-canvas.js";
+import { liveActionAvailability } from "./ui/action-availability.js";
+import { attachSourceActivity } from "./ui/source-activity.js";
 
 const element = (id) => document.getElementById(id);
 const controls = {
@@ -63,6 +65,10 @@ function appendDefinition(grid, label, value) {
 function updateUi() {
   const summary = model.summary();
   const session = adapter.summary();
+  const liveActions = liveActionAvailability(session, sourceStatus);
+  const liveSource = source instanceof WebSocketSource;
+  controls.start.disabled = liveSource ? !liveActions.start : false;
+  controls.stop.disabled = liveSource ? !liveActions.stop : false;
   statusGrid.replaceChildren();
   const entries = [
     ["Source state", `${sourceStatus.source}: ${sourceStatus.state}`],
@@ -117,14 +123,10 @@ function afterActivity() {
 }
 
 function attachSource(nextSource) {
-  nextSource.onControl((control) => { adapter.handleControl(control); afterActivity(); });
-  nextSource.onBinary((buffer) => { adapter.handleBinary(buffer); afterActivity(); });
-  nextSource.onStatus((status) => {
-    sourceStatus = status;
-    adapter.notifyTransportStatus(status);
-    afterActivity();
+  attachSourceActivity(nextSource, adapter, {
+    setSourceStatus(status) { sourceStatus = status; },
+    afterActivity,
   });
-  nextSource.onError((error) => { adapter.handleError(error); afterActivity(); });
 }
 
 async function replaceSource() {
@@ -136,7 +138,12 @@ async function replaceSource() {
   } else if (kind === "capture") {
     source = new CaptureReplaySource({ speed: sourceSpeed() });
   } else {
-    source = new WebSocketSource({ endpoint: controls.endpoint.value });
+    source = new WebSocketSource({
+      endpoint: controls.endpoint.value,
+      stream: "live-vi",
+      supportedStreams: ["live-vi"],
+      controlAuthority: adapter,
+    });
   }
   sourceStatus = Object.freeze({ source: source.kind, state: "closed" });
   attachSource(source);
@@ -152,7 +159,7 @@ function updateSourceSpecificControls() {
 }
 
 async function withUiError(action) {
-  try { await action(); } catch (error) { adapter.handleError(error); afterActivity(); }
+  try { await action(); } catch (error) { adapter.handleError(error); }
 }
 
 controls.source.addEventListener("change", () => { void withUiError(replaceSource); });
@@ -164,8 +171,12 @@ controls.speed.addEventListener("change", () => {
   if (source?.setSpeed) source.setSpeed(sourceSpeed());
 });
 controls.window.addEventListener("change", () => {
-  try { model.setDisplayWindowSeconds(Number(controls.window.value)); } catch (error) { adapter.handleError(error); }
-  afterActivity();
+  try {
+    model.setDisplayWindowSeconds(Number(controls.window.value));
+    afterActivity();
+  } catch (error) {
+    adapter.handleError(error);
+  }
 });
 controls.capture.addEventListener("change", () => {
   void withUiError(async () => {
@@ -185,20 +196,27 @@ controls.open.addEventListener("click", () => {
 });
 controls.start.addEventListener("click", () => {
   void withUiError(async () => {
-    if (source instanceof WebSocketSource && adapter.controlState !== "READY") throw new Error("wait for a validated welcome before starting live stream");
+    if (source instanceof WebSocketSource && !liveActionAvailability(adapter.summary(), sourceStatus).start) {
+      throw new Error("wait for a validated welcome before starting live stream");
+    }
     await source.start();
   });
 });
-controls.stop.addEventListener("click", () => { void withUiError(() => source.stop()); });
+controls.stop.addEventListener("click", () => {
+  void withUiError(async () => {
+    if (source instanceof WebSocketSource && !liveActionAvailability(adapter.summary(), sourceStatus).stop) {
+      throw new Error("wait for an accepted active stream before stopping live stream");
+    }
+    await source.stop();
+  });
+});
 controls.close.addEventListener("click", () => { void withUiError(() => source.close()); });
 
 window.addEventListener("error", (event) => {
   adapter.handleError(event.error || event.message || "window error");
-  afterActivity();
 });
 window.addEventListener("unhandledrejection", (event) => {
   adapter.handleError(event.reason || "unhandled rejection");
-  afterActivity();
 });
 
 Object.defineProperty(window, "__viewerDiagnostics", {

@@ -1,0 +1,32 @@
+:root { font: 16px/1.45 system-ui, sans-serif; color: #18212f; background: #f7f9fc; }
+body { margin: 0; }
+main { max-width: 72rem; margin: auto; padding: 1rem; }
+header,.values,.actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+.values output,.graphs section,.professional { background: #fff; border: 1px solid #a6b2c4; border-radius: .5rem; padding: 1rem; }
+.values output { flex: 1 1 16rem; font-size: 1.25rem; }
+.graphs { display: grid; grid-template-columns: 1fr; gap: 1rem; margin-block: 1rem; }
+.graph-panel { min-width: 0; }
+.graph-panel[hidden] { display: none; }
+.graph-panel canvas { display: block; width: 100%; height: 18rem; --canvas-bg: #101821; --canvas-fg: #dfeaff; --canvas-grid: #405064; --canvas-muted: #9eadbf; --canvas-zero: #8491a5; --canvas-marker: #f6c45d; --canvas-invalid: #d67eff; }
+.graph-panel [data-waveform="voltage"] { --canvas-accent: #0879a8; }
+.graph-panel [data-waveform="current"] { --canvas-accent: #087a49; }
+button { min-width: 44px; min-height: 44px; padding: .5rem .9rem; }
+button:focus-visible { outline: 3px solid #045cbb; outline-offset: 2px; }
+.quality,.error,.deployment { border-inline-start: 4px solid #045cbb; padding-inline-start: .5rem; }
+
+@media (max-width: 599px) {
+  .graphs { grid-template-columns: 1fr; }
+  main { padding: .75rem; }
+}
+
+@media (min-width: 600px) and (max-width: 1023px) {
+  .values { flex-wrap: nowrap; }
+  .values output { flex: 1 1 0; }
+  .graphs { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 1024px) {
+  .graphs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

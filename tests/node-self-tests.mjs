@@ -7,14 +7,19 @@ import { StreamModel } from "../src/model/stream-model.js";
 import { SessionAdapter } from "../src/protocol/session-adapter.js";
 import { relativeDeviceSeconds } from "../src/render/scale.js";
 import { parseLiveCapture, CaptureReplaySource } from "../src/sources/capture-replay-source.js";
+import { DataSource } from "../src/sources/data-source.js";
 import { WebSocketSource } from "../src/sources/websocket-source.js";
+import { liveActionAvailability } from "../src/ui/action-availability.js";
+import { attachSourceActivity } from "../src/ui/source-activity.js";
 import {
-  DEFAULT_VI_PARAMETERS, buildSyntheticPlan, makeHelloText, makeWelcomeText, makeStartText, makeStartedText,
+  DEFAULT_VI_PARAMETERS, buildSyntheticPlan, makeHelloText, makeWelcomeText, makeStartText, makeStartedText, makeStopText,
   makeStoppedText, makeStreamEndFrame, makeViFrame, SyntheticSource,
 } from "../src/sources/synthetic-source.js";
 
 const BASE_SEQUENCE = 9_007_199_254_742_000n;
 const SAMPLE_PERIOD_US = 40_000n;
+const LIVE_STREAM = "live-vi";
+const LIVE_SUPPORTED_STREAMS = Object.freeze([LIVE_STREAM]);
 
 function readyAdapter({ capacity = 4096, displayWindowSeconds = 60 } = {}) {
   const model = new StreamModel({ capacity, displayWindowSeconds });
@@ -40,6 +45,55 @@ function emitFirst(adapter, options = {}) {
   return adapter.handleBinary(frame({ sequence: BASE_SEQUENCE, timestampUs: 1_000_000n, flags: 1, ...options }));
 }
 
+function decodedViFrame({
+  streamId,
+  sequence,
+  timestampUs,
+  flags = 0x01,
+  validMask = 3,
+  voltage = 3.3,
+  current = 0.1,
+  timebaseReset = Boolean(flags & 0x40),
+  withSegment = true,
+} = {}) {
+  return {
+    stream_id: streamId,
+    flags,
+    gap_samples: 0n,
+    stream_start: Boolean(flags & 0x01),
+    stream_end: false,
+    discontinuity: Boolean(flags & 0x04),
+    producer_overflow: Boolean(flags & 0x08),
+    output_queue_drop: Boolean(flags & 0x10),
+    source_paused: Boolean(flags & 0x20),
+    timebase_reset: timebaseReset,
+    records: [{
+      sequence,
+      timestampUs,
+      validMask,
+      measurements: { voltage, current },
+    }],
+    segment: withSegment ? {
+      streamId,
+      startSequence: sequence,
+      startTimestampUs: timestampUs,
+      gapSamples: 0n,
+      causes: {
+        producerOverflow: false,
+        outputQueueDrop: false,
+        sourcePaused: false,
+        timebaseReset,
+      },
+    } : null,
+  };
+}
+
+function commitDecodedViFrame(model, options = {}) {
+  const candidate = model.prepareDecodedFrame(decodedViFrame(options));
+  model.commitCandidate(candidate);
+  return candidate;
+}
+
 function assertClose(actual, expected, tolerance = 0.00001) {
   assert.ok(Math.abs(actual - expected) <= tolerance, "expected " + expected + ", got " + actual);
 }
@@ -57,6 +111,19 @@ function attach(source, adapter) {
   source.onControl((control) => adapter.handleControl(control));
   source.onBinary((buffer) => adapter.handleBinary(buffer));
   source.onError((error) => adapter.handleError(error));
+}
+
+function makeLiveWebSocketSource({ endpoint = "ws://example.test/d2b/v0/stream" } = {}) {
+  const model = new StreamModel();
+  const adapter = new SessionAdapter(model);
+  const source = new WebSocketSource({
+    endpoint,
+    stream: LIVE_STREAM,
+    supportedStreams: LIVE_SUPPORTED_STREAMS,
+    controlAuthority: adapter,
+  });
+  attach(source, adapter);
+  return { model, adapter, source };
 }
 
 function driveSyntheticScenario(scenario) {
@@ -100,7 +167,9 @@ class ControlledWebSocket {
     this.readyState = ControlledWebSocket.CONNECTING;
     this.binaryType = "";
     this.sent = [];
+    this.sendCalls = 0;
     this.closeCalls = 0;
+    this.throwOnSend = null;
     this.throwOnClose = null;
     this.onopen = null;
     this.onmessage = null;
@@ -112,6 +181,8 @@ class ControlledWebSocket {
   static reset() { ControlledWebSocket.instances = []; }
 
   send(text) {
+    this.sendCalls += 1;
+    if (this.throwOnSend) throw this.throwOnSend;
     if (this.readyState !== ControlledWebSocket.OPEN) throw new Error("mock send while not open");
     this.sent.push(text);
   }
@@ -183,18 +254,21 @@ test("sequence gap, producer overflow, and output queue drop are distinct", () =
   assert.equal(summary.segmentCount, 3);
 });
 
-test("new stream creates a hard model segment without joining old line", () => {
+test("new stream starts a fresh viewport with a distinct cumulative segment", () => {
   const { model, adapter } = readyAdapter();
   startVi(adapter, 1);
   assert.equal(emitFirst(adapter, { streamId: 1 }), true);
+  const firstViewportRecord = model.recordSnapshot()[0];
   assert.equal(adapter.handleBinary(makeStreamEndFrame({ streamId: 1, sequence: BASE_SEQUENCE + 1n, timestampUs: 1_040_000n })), true);
   assert.equal(adapter.handleControl({ direction: "server_to_client", text: makeStoppedText(1) }), true);
   startVi(adapter, 2);
   assert.equal(emitFirst(adapter, { streamId: 2, timestampUs: 2_000_000n }), true);
   const records = model.recordSnapshot();
-  assert.equal(records.length, 2);
-  assert.notEqual(records[0].segment_id, records[1].segment_id);
-  assert.deepEqual(records.map((record) => record.stream_id), [1, 2]);
+  assert.equal(records.length, 1);
+  assert.deepEqual(records.map((record) => record.stream_id), [2]);
+  assert.notEqual(firstViewportRecord.segment_id, records[0].segment_id);
+  assert.equal(model.summary().sampleCount, 2, "clearing a viewport must not erase cumulative session samples");
+  assert.equal(model.summary().segmentCount, 2, "clearing a viewport must not erase cumulative segment history");
 });
 
 test("invalid channel is retained as invalid, never as a numeric placeholder", () => {
@@ -276,6 +350,119 @@ test("display-window eviction is a viewer condition, not a device sequence gap",
   assert.equal(summary.bufferUsage, 1);
 });
 
+test("reconnect keeps only the active device-time viewport while counters remain cumulative", () => {
+  const model = new StreamModel({ capacity: 64, displayWindowSeconds: 60 });
+  model.beginStream({ streamId: 1, profile: "vi-measurement" });
+  commitDecodedViFrame(model, { streamId: 1, sequence: 1n, timestampUs: 0n });
+  commitDecodedViFrame(model, { streamId: 1, sequence: 2n, timestampUs: 10_000_000n, flags: 0, withSegment: false });
+  model.finishStream();
+
+  model.beginStream({ streamId: 2, profile: "vi-measurement" });
+  commitDecodedViFrame(model, { streamId: 2, sequence: 1n, timestampUs: 10_040_000n });
+  commitDecodedViFrame(model, { streamId: 2, sequence: 2n, timestampUs: 80_000_000n, flags: 0, withSegment: false });
+
+  const records = model.recordSnapshot();
+  const markers = model.markerSnapshot();
+  assert.deepEqual(records.map((record) => ({ streamId: record.stream_id, timestampUs: record.timestamp_us })), [
+    { streamId: 2, timestampUs: 80_000_000n },
+  ]);
+  assert.deepEqual(markers, []);
+  assert.ok(records.at(-1).timestamp_us - records[0].timestamp_us <= 60_000_000n);
+  assert.deepEqual(model.summary().latest, {
+    streamId: 2,
+    sequence: "2",
+    timestampUs: "80000000",
+    voltageV: 3.3,
+    currentA: 0.1,
+    validMask: 3,
+  });
+  assert.equal(model.summary().sampleCount, 4);
+  assert.equal(model.summary().segmentCount, 2);
+  assert.equal(model.summary().viewerWindowEvictionCount, 1);
+});
+
+test("a new stream may reset device timestamps without retaining the prior stream viewport", () => {
+  const model = new StreamModel();
+  model.beginStream({ streamId: 1, profile: "vi-measurement" });
+  commitDecodedViFrame(model, { streamId: 1, sequence: 90n, timestampUs: 80_000_000n });
+  model.finishStream();
+
+  model.beginStream({ streamId: 2, profile: "vi-measurement" });
+  commitDecodedViFrame(model, { streamId: 2, sequence: 1n, timestampUs: 0n });
+
+  assert.deepEqual(model.recordSnapshot().map((record) => ({ streamId: record.stream_id, timestampUs: record.timestamp_us })), [
+    { streamId: 2, timestampUs: 0n },
+  ]);
+  assert.deepEqual(model.markerSnapshot().map((marker) => ({ streamId: marker.stream_id, timestampUs: marker.timestamp_us })), [
+    { streamId: 2, timestampUs: 0n },
+  ]);
+  assert.equal(model.summary().sampleCount, 2);
+  assert.equal(model.summary().segmentCount, 2);
+});
+
+test("an accepted TIMEBASE_RESET commits a fresh viewport epoch without losing counters", () => {
+  const model = new StreamModel();
+  model.beginStream({ streamId: 1, profile: "vi-measurement" });
+  commitDecodedViFrame(model, { streamId: 1, sequence: 90n, timestampUs: 80_000_000n });
+  const beforeReset = model.recordSnapshot()[0];
+
+  const resetCandidate = model.prepareDecodedFrame(decodedViFrame({
+    streamId: 1,
+    sequence: 1n,
+    timestampUs: 0n,
+    flags: 0x45,
+    timebaseReset: true,
+  }));
+  assert.deepEqual(model.recordSnapshot(), [beforeReset], "prepare must not clear a viewport");
+  assert.equal(model.markerSnapshot().length, 1);
+
+  model.commitCandidate(resetCandidate);
+  const resetRecord = model.recordSnapshot()[0];
+  const resetMarker = model.markerSnapshot()[0];
+  assert.deepEqual(model.recordSnapshot().map((record) => record.timestamp_us), [0n]);
+  assert.deepEqual(model.markerSnapshot().map((marker) => marker.timestamp_us), [0n]);
+  assert.notEqual(resetRecord.segment_id, beforeReset.segment_id);
+  assert.notEqual(resetRecord.voltage_segment_id, beforeReset.voltage_segment_id);
+  assert.notEqual(resetRecord.current_segment_id, beforeReset.current_segment_id);
+  assert.equal(resetMarker.causes.timebaseReset, true);
+
+  commitDecodedViFrame(model, {
+    streamId: 1,
+    sequence: 2n,
+    timestampUs: 1n,
+    flags: 0,
+    validMask: 0,
+    withSegment: false,
+  });
+  const [first, invalid] = model.recordSnapshot();
+  assert.equal(first.valid_mask, 3);
+  assert.equal(invalid.voltage_V, null);
+  assert.equal(invalid.current_A, null);
+  assert.equal(model.summary().sampleCount, 3);
+  assert.equal(model.summary().segmentCount, 2);
+  assert.equal(model.summary().invalidVoltageCount, 1);
+  assert.equal(model.summary().invalidCurrentCount, 1);
+});
+
+test("active-epoch window eviction cannot be blocked by stale FIFO entries", () => {
+  const model = new StreamModel({ displayWindowSeconds: 1 });
+  model.beginStream({ streamId: 7, profile: "vi-measurement" });
+  model.records.append(Object.freeze({ stream_id: 6, timestamp_us: 0n }));
+  model.records.append(Object.freeze({ stream_id: 7, timestamp_us: 0n }));
+  model.markers.append(Object.freeze({ stream_id: 6, timestamp_us: 0n }));
+  model.markers.append(Object.freeze({ stream_id: 7, timestamp_us: 0n }));
+
+  commitDecodedViFrame(model, { streamId: 7, sequence: 1n, timestampUs: 3_000_000n });
+
+  assert.deepEqual(model.recordSnapshot().map((record) => ({ streamId: record.stream_id, timestampUs: record.timestamp_us })), [
+    { streamId: 7, timestampUs: 3_000_000n },
+  ]);
+  assert.deepEqual(model.markerSnapshot().map((marker) => ({ streamId: marker.stream_id, timestampUs: marker.timestamp_us })), [
+    { streamId: 7, timestampUs: 3_000_000n },
+  ]);
+  assert.equal(model.summary().viewerWindowEvictionCount, 1);
+});
+
 test("S3 and S4 omit logical positions in both device time and sequence", () => {
   const cases = [
     { scenario: "producer-gap", retained: 245, delta: 6n, timestampDelta: 6n * SAMPLE_PERIOD_US, flag: 0x0c, gapSamples: "5" },
@@ -334,7 +521,7 @@ test("all S1-S7 synthetic scenarios preserve their stated semantics", () => {
   const reconnect = driveSyntheticScenario("reconnect");
   assert.equal(reconnect.model.summary().sampleCount, 250);
   assert.equal(reconnect.model.summary().segmentCount, 2);
-  assert.deepEqual([...new Set(reconnect.model.recordSnapshot().map((record) => record.stream_id))], [1, 2]);
+  assert.deepEqual([...new Set(reconnect.model.recordSnapshot().map((record) => record.stream_id))], [2]);
 
   const invalid = driveSyntheticScenario("invalid-frame");
   assert.equal(invalid.model.summary().sampleCount, 250);
@@ -361,15 +548,344 @@ test("synthetic source start/stop lifecycle is bounded and closes cleanly", asyn
   assert.equal(source.state, "closed");
 });
 
+test("WebSocket stream selection is explicit, allowlisted, and wire-safe", { concurrency: false }, async () => {
+  await withControlledWebSocket(async () => {
+    const endpoint = "ws://example.test/d2b/v0/stream";
+    const authority = new SessionAdapter(new StreamModel());
+    const invalidSelections = [
+      { supportedStreams: LIVE_SUPPORTED_STREAMS },
+      { stream: "   ", supportedStreams: LIVE_SUPPORTED_STREAMS },
+      { stream: " live-vi ", supportedStreams: LIVE_SUPPORTED_STREAMS },
+      { stream: "unknown-stream", supportedStreams: LIVE_SUPPORTED_STREAMS },
+      { stream: LIVE_STREAM, supportedStreams: [] },
+      { stream: "not wire safe", supportedStreams: ["not wire safe"] },
+    ];
+    for (const options of invalidSelections) {
+      assert.throws(() => new WebSocketSource({ endpoint, controlAuthority: authority, ...options }), /stream|supportedStreams/i);
+      assert.equal(ControlledWebSocket.instances.length, 0, "invalid stream selection must not construct a WebSocket");
+    }
+    assert.throws(() => new WebSocketSource({ endpoint, stream: LIVE_STREAM, supportedStreams: LIVE_SUPPORTED_STREAMS }), /controlAuthority/i);
+    assert.equal(ControlledWebSocket.instances.length, 0, "missing authority must not construct a WebSocket");
+
+    const { adapter, source } = makeLiveWebSocketSource({ endpoint });
+    const opening = source.open();
+    const socket = ControlledWebSocket.instances[0];
+    socket.open();
+    await opening;
+    socket.message(makeWelcomeText());
+    assert.equal(adapter.controlState, "READY");
+    await source.start();
+    assert.deepEqual(JSON.parse(socket.sent.at(-1)), {
+      type: "start_stream",
+      stream: LIVE_STREAM,
+      profile: "vi-measurement",
+      parameters: DEFAULT_VI_PARAMETERS,
+    });
+
+    const closing = source.close();
+    socket.finishClose();
+    await closing;
+  });
+});
+
+test("outbound authority tokens are opaque, single-use reservations", () => {
+  const { adapter } = readyAdapter();
+  const state = () => {
+    const summary = adapter.summary();
+    return {
+      controlState: summary.controlState,
+      streamId: summary.streamId,
+      startPending: summary.startPending,
+      stopPending: summary.stopPending,
+    };
+  };
+
+  const ready = state();
+  assert.throws(() => adapter.prepareOutboundControl(makeStopText(1)), /stop_stream/);
+  assert.deepEqual(state(), ready, "a rejected prepare must not mutate control state");
+
+  const token = adapter.prepareOutboundControl(makeStartText(LIVE_STREAM));
+  assert.deepEqual(state(), { controlState: "READY", streamId: null, startPending: true, stopPending: false });
+  const reserved = state();
+  assert.throws(() => adapter.commitOutboundControl(Object.freeze(Object.create(null))), /invalid outbound control token/);
+  assert.deepEqual(state(), reserved, "a foreign token must not mutate the reservation");
+
+  adapter.rollbackOutboundControl(token);
+  assert.deepEqual(state(), ready);
+  assert.throws(() => adapter.rollbackOutboundControl(token), /invalid outbound control token/);
+  assert.throws(() => adapter.commitOutboundControl(token), /invalid outbound control token/);
+  assert.deepEqual(state(), ready, "a stale token must not mutate control state");
+
+  const committedToken = adapter.prepareOutboundControl(makeStartText(LIVE_STREAM));
+  adapter.commitOutboundControl(committedToken);
+  assert.deepEqual(state(), { controlState: "READY", streamId: null, startPending: true, stopPending: false });
+  assert.throws(() => adapter.prepareOutboundControl(makeStartText(LIVE_STREAM)), /already pending/);
+  assert.equal(adapter.handleControl({ direction: "server_to_client", text: makeStartedText(41, "wrong-stream") }), false);
+  assert.deepEqual(state(), { controlState: "READY", streamId: null, startPending: true, stopPending: false });
+  assert.equal(adapter.handleControl({ direction: "server_to_client", text: makeStartedText(41, LIVE_STREAM) }), true);
+  assert.deepEqual(state(), { controlState: "STREAMING", streamId: 41, startPending: false, stopPending: false });
+
+  const stopToken = adapter.prepareOutboundControl(makeStopText(41));
+  adapter.commitOutboundControl(stopToken);
+  assert.deepEqual(state(), { controlState: "STREAMING", streamId: 41, startPending: false, stopPending: true });
+  assert.throws(() => adapter.prepareOutboundControl(makeStopText(41)), /already pending/);
+});
+
+test("live source sends only authority-approved controls and forwards only raw server controls", { concurrency: false }, async () => {
+  await withControlledWebSocket(async () => {
+    const { adapter, source } = makeLiveWebSocketSource();
+    const controls = [];
+    source.onControl((control) => {
+      controls.push(control);
+      return adapter.handleControl(control);
+    });
+    const opening = source.open();
+    const socket = ControlledWebSocket.instances[0];
+    socket.open();
+    await opening;
+    assert.deepEqual(socket.sent.map((text) => JSON.parse(text).type), ["hello"]);
+    assert.deepEqual(controls, [], "outbound hello must not be emitted through the server-control callback");
+
+    const beforePrematureStart = socket.sent.length;
+    await assert.rejects(source.start(), /start_stream/);
+    assert.equal(socket.sent.length, beforePrematureStart, "a rejected start must not reach the wire");
+    assert.equal(adapter.summary().startPending, false);
+
+    socket.message(makeWelcomeText());
+    assert.equal(adapter.controlState, "READY");
+    assert.deepEqual(controls.map((control) => control.direction), ["server_to_client"]);
+    await source.start();
+    assert.equal(adapter.summary().startPending, true);
+    assert.equal(socket.sent.filter((text) => JSON.parse(text).type === "start_stream").length, 1);
+    await assert.rejects(source.start(), /already pending/);
+    assert.equal(socket.sent.filter((text) => JSON.parse(text).type === "start_stream").length, 1);
+
+    socket.message(makeStartedText(23, LIVE_STREAM));
+    assert.equal(adapter.summary().streamId, 23);
+    await source.stop();
+    assert.deepEqual(JSON.parse(socket.sent.at(-1)), { type: "stop_stream", stream_id: 23, reason: "viewer stop" });
+    await assert.rejects(source.stop(), /already pending/);
+
+    const closing = source.close();
+    socket.finishClose();
+    await closing;
+  });
+});
+
+test("a throwing start send rolls back exactly once and retry commits exactly once", { concurrency: false }, async () => {
+  await withControlledWebSocket(async () => {
+    const model = new StreamModel();
+    const adapter = new SessionAdapter(model);
+    const calls = { prepare: 0, commit: 0, rollback: 0 };
+    const authority = {
+      prepareOutboundControl(text) {
+        calls.prepare += 1;
+        return adapter.prepareOutboundControl(text);
+      },
+      commitOutboundControl(token) {
+        calls.commit += 1;
+        return adapter.commitOutboundControl(token);
+      },
+      rollbackOutboundControl(token) {
+        calls.rollback += 1;
+        return adapter.rollbackOutboundControl(token);
+      },
+      summary() { return adapter.summary(); },
+    };
+    const source = new WebSocketSource({
+      endpoint: "ws://example.test/d2b/v0/stream",
+      stream: LIVE_STREAM,
+      supportedStreams: LIVE_SUPPORTED_STREAMS,
+      controlAuthority: authority,
+    });
+    attach(source, adapter);
+    const opening = source.open();
+    const socket = ControlledWebSocket.instances[0];
+    socket.open();
+    await opening;
+    socket.message(makeWelcomeText());
+    assert.deepEqual(calls, { prepare: 1, commit: 1, rollback: 0 }, "hello must commit through the same authority transaction");
+
+    socket.throwOnSend = new Error("mock start send failure");
+    const sentBeforeFailure = socket.sent.length;
+    await assert.rejects(source.start(), /mock start send failure/);
+    assert.equal(socket.sent.length, sentBeforeFailure);
+    assert.deepEqual(calls, { prepare: 2, commit: 1, rollback: 1 });
+    assert.equal(adapter.summary().startPending, false, "failed send must restore the pre-send state");
+
+    socket.throwOnSend = null;
+    await source.start();
+    assert.deepEqual(calls, { prepare: 3, commit: 2, rollback: 1 });
+    assert.equal(adapter.summary().startPending, true);
+
+    const closing = source.close();
+    socket.finishClose();
+    await closing;
+  });
+});
+
+test("a failed hello send rolls back its reservation and a new socket can retry", { concurrency: false }, async () => {
+  await withControlledWebSocket(async () => {
+    const model = new StreamModel();
+    const adapter = new SessionAdapter(model);
+    const calls = { prepare: 0, commit: 0, rollback: 0 };
+    const authority = {
+      prepareOutboundControl(text) { calls.prepare += 1; return adapter.prepareOutboundControl(text); },
+      commitOutboundControl(token) { calls.commit += 1; return adapter.commitOutboundControl(token); },
+      rollbackOutboundControl(token) { calls.rollback += 1; return adapter.rollbackOutboundControl(token); },
+      summary() { return adapter.summary(); },
+    };
+    const source = new WebSocketSource({
+      endpoint: "ws://example.test/d2b/v0/stream",
+      stream: LIVE_STREAM,
+      supportedStreams: LIVE_SUPPORTED_STREAMS,
+      controlAuthority: authority,
+    });
+    attach(source, adapter);
+
+    const failedOpening = source.open();
+    const first = ControlledWebSocket.instances[0];
+    first.throwOnSend = new Error("mock hello send failure");
+    first.open();
+    await assert.rejects(failedOpening, /mock hello send failure/);
+    assert.deepEqual(calls, { prepare: 1, commit: 0, rollback: 1 });
+    const failedClose = source._closePromise;
+    assert.ok(failedClose);
+    first.finishClose();
+    await failedClose;
+
+    const retryOpening = source.open();
+    const second = ControlledWebSocket.instances[1];
+    second.open();
+    await retryOpening;
+    assert.deepEqual(calls, { prepare: 2, commit: 1, rollback: 1 });
+    second.message(makeWelcomeText());
+    assert.equal(adapter.controlState, "READY");
+
+    const closing = source.close();
+    second.finishClose();
+    await closing;
+  });
+});
+
+test("observer failures cannot undo an already-sent authority commit", { concurrency: false }, async () => {
+  await withControlledWebSocket(async () => {
+    const model = new StreamModel();
+    const adapter = new SessionAdapter(model, { onChange: () => { throw new Error("hostile observer"); } });
+    const source = new WebSocketSource({
+      endpoint: "ws://example.test/d2b/v0/stream",
+      stream: LIVE_STREAM,
+      supportedStreams: LIVE_SUPPORTED_STREAMS,
+      controlAuthority: adapter,
+    });
+    attach(source, adapter);
+    const opening = source.open();
+    const socket = ControlledWebSocket.instances[0];
+    socket.open();
+    await opening;
+    socket.message(makeWelcomeText());
+
+    await source.start();
+    assert.equal(socket.sent.filter((text) => JSON.parse(text).type === "start_stream").length, 1);
+    assert.equal(adapter.summary().startPending, true);
+    assert.ok(adapter.diagnostics().some((entry) => entry.code === "observer_error"));
+
+    const closing = source.close();
+    socket.finishClose();
+    await closing;
+  });
+});
+
+test("live action availability is a pure conservative UI policy", () => {
+  const cases = [
+    [{ controlState: "READY", startPending: false, stopPending: false, streamId: null }, { state: "open" }, { start: true, stop: false }],
+    [{ controlState: "READY", startPending: true, stopPending: false, streamId: null }, { state: "open" }, { start: false, stop: false }],
+    [{ controlState: "STREAMING", startPending: false, stopPending: false, streamId: 7 }, { state: "open" }, { start: false, stop: true }],
+    [{ controlState: "STREAMING", startPending: false, stopPending: true, streamId: 7 }, { state: "open" }, { start: false, stop: false }],
+    [{ controlState: "STREAMING", startPending: false, stopPending: false, streamId: null }, { state: "open" }, { start: false, stop: false }],
+    [{ controlState: "READY", startPending: false, stopPending: false, streamId: null }, { state: "closed" }, { start: false, stop: false }],
+  ];
+  for (const [session, sourceStatus, expected] of cases) {
+    assert.deepEqual(liveActionAvailability(session, sourceStatus), expected);
+  }
+});
+
+test("source activity produces one UI update per event", () => {
+  class CountingSource extends DataSource {
+    constructor() { super("counting"); }
+    emitStatus(state) { this._emitStatus(state); }
+    emitControl(direction, text) { this._emitControl(direction, text); }
+    emitError(error) { this._emitError(error); }
+  }
+  const model = new StreamModel();
+  let updates = 0;
+  let sourceStatus = null;
+  const adapter = new SessionAdapter(model, { onChange: () => { updates += 1; } });
+  const source = new CountingSource();
+  attachSourceActivity(source, adapter, {
+    setSourceStatus(status) { sourceStatus = status; },
+    afterActivity() { updates += 1; },
+  });
+
+  source.emitStatus("connecting");
+  assert.equal(updates, 1, "source-only status should update once");
+  source.emitStatus("open");
+  assert.equal(updates, 2, "adapter-owned transport status should update once");
+  assert.equal(sourceStatus.state, "open");
+  source.emitControl("client_to_server", makeHelloText());
+  assert.equal(updates, 3, "accepted client control should update once");
+  source.emitControl("server_to_client", makeWelcomeText());
+  assert.equal(updates, 4, "accepted server control should update once");
+  source.emitError(new Error("counted source error"));
+  assert.equal(updates, 5, "source error should update once");
+  source.emitStatus("stopped");
+  assert.equal(updates, 6, "non-streaming stopped status should update once");
+});
+
+test("checked-in VAMeter fixture exposes and requests the exact live V/I stream", async () => {
+  const capture = JSON.parse(await readFile(new URL("../fixtures/capture/synthetic-live-capture.json", import.meta.url), "utf8"));
+  const capabilities = JSON.parse(capture.capabilities_text);
+  const liveStream = capabilities.streams.find((stream) => stream.id === LIVE_STREAM);
+  assert.ok(liveStream, "fixture must advertise live-vi");
+  const viProfile = liveStream.profiles.find((profile) => profile.profile === "vi-measurement");
+  assert.ok(viProfile, "live-vi must advertise vi-measurement");
+  assert.deepEqual(viProfile.parameter_sets, [DEFAULT_VI_PARAMETERS]);
+
+  const start = JSON.parse(capture.controls.find((control) => {
+    const message = JSON.parse(control.text);
+    return control.direction === "client_to_server" && message.type === "start_stream";
+  }).text);
+  assert.deepEqual(start, {
+    type: "start_stream",
+    stream: LIVE_STREAM,
+    profile: "vi-measurement",
+    parameters: DEFAULT_VI_PARAMETERS,
+  });
+});
+
+test("application live mode explicitly constructs the captured live stream", async () => {
+  const appText = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(appText, /new WebSocketSource\(\{\s*endpoint: controls\.endpoint\.value,\s*stream: "live-vi",\s*supportedStreams: \["live-vi"\],\s*controlAuthority: adapter,\s*\}\)/);
+});
+
 test("WebSocket close owns its callbacks through awaited reopen", { concurrency: false }, async () => {
   await withControlledWebSocket(async () => {
-    const source = new WebSocketSource({ endpoint: "ws://example.test/d2b/v0/stream" });
+    const { adapter, source } = makeLiveWebSocketSource();
     const statuses = [];
     const controls = [];
     const errors = [];
-    source.onStatus((status) => statuses.push(status.state));
-    source.onControl((control) => controls.push(control));
-    source.onError((error) => errors.push(error));
+    source.onStatus((status) => {
+      statuses.push(status.state);
+      adapter.notifyTransportStatus(status);
+    });
+    source.onControl((control) => {
+      controls.push(control);
+      return adapter.handleControl(control);
+    });
+    source.onError((error) => {
+      errors.push(error);
+      adapter.handleError(error);
+    });
 
     const firstOpen = source.open();
     const first = ControlledWebSocket.instances[0];
@@ -378,6 +894,9 @@ test("WebSocket close owns its callbacks through awaited reopen", { concurrency:
     await firstOpen;
     assert.equal(source.socket, first);
     assert.equal(JSON.parse(first.sent[0]).type, "hello");
+    assert.equal(controls.length, 0, "outbound hello must not be replayed through onControl");
+    first.message(makeWelcomeText());
+    assert.equal(adapter.controlState, "READY");
     assert.equal(controls.length, 1);
 
     const pendingClose = source.close();
@@ -398,6 +917,8 @@ test("WebSocket close owns its callbacks through awaited reopen", { concurrency:
     await reopening;
     assert.equal(source.socket, second);
     assert.equal(source.state, "open");
+    second.message(makeWelcomeText());
+    assert.equal(adapter.controlState, "READY");
 
     const statusCountBeforeStaleCallbacks = statuses.length;
     const controlCountBeforeStaleCallbacks = controls.length;
@@ -414,7 +935,7 @@ test("WebSocket close owns its callbacks through awaited reopen", { concurrency:
     assert.equal(statuses.at(-1), "open");
 
     await source.start();
-    second.message(JSON.stringify({ type: "stream_started", stream: "measurement-0", profile: "vi-measurement", parameters: DEFAULT_VI_PARAMETERS, stream_id: 22 }));
+    second.message(JSON.stringify({ type: "stream_started", stream: LIVE_STREAM, profile: "vi-measurement", parameters: DEFAULT_VI_PARAMETERS, stream_id: 22 }));
     await source.stop();
     assert.equal(JSON.parse(second.sent.at(-2)).type, "start_stream");
     assert.equal(JSON.parse(second.sent.at(-1)).stream_id, 22);
@@ -428,7 +949,7 @@ test("WebSocket close owns its callbacks through awaited reopen", { concurrency:
 });
 
 test("WebSocket synchronous construction and close failures clear pending attempts", { concurrency: false }, async () => {
-  const source = new WebSocketSource({ endpoint: "ws://example.test/d2b/v0/stream" });
+  const { adapter, source } = makeLiveWebSocketSource();
   class ThrowingWebSocket {
     constructor() { throw new Error("mock constructor failure"); }
   }
@@ -443,6 +964,8 @@ test("WebSocket synchronous construction and close failures clear pending attemp
     const socket = ControlledWebSocket.instances[0];
     socket.open();
     await opening;
+    socket.message(makeWelcomeText());
+    assert.equal(adapter.controlState, "READY");
     socket.throwOnClose = new Error("mock close failure");
     await assert.rejects(source.close(), /mock close failure/);
     assert.equal(source.socket, socket);

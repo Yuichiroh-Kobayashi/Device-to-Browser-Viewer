@@ -6,6 +6,7 @@ reference source from:
 - repository: <https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming>
 - baseline commit: `b30ad676922af73448952d5a9cac312467a944f9`
 - source root: `reference/browser/src`
+- source tree OID: `6e5b4844548c1355dea7e5cbbcb1200c9d2335fd`
 - copied paths: `binary-envelope.js`, `capabilities-validator.js`,
   `control-parser.js`, `decoder-state.js`, `decoder.js`, `errors.js`,
   `protocol-constants.js`, `public-status-validator.js`, `strict-json.js`,
@@ -16,6 +17,12 @@ The Apache-2.0 license is retained at `../../LICENSES/Apache-2.0.txt`; all copie
 files retain their SPDX headers. The Viewer calls the public
 `createDecoderState()`, `decodeBinaryFrame()`, and `validatePublicStatus()`
 APIs and does not substitute its own binary or public-status validator.
+
+The current materializer and product builder independently require
+`HEAD:src/protocol/d2b-reference` to resolve to that exact Git tree OID before
+they copy source or generate candidate artifacts. The external Protocol
+checkout is needed to establish or deliberately update the commit/tree pin,
+not for clean-checkout reproduction.
 
 To update deliberately, select the merged upstream commit, copy the entire source
 root without editing it, confirm its `LICENSE`, update the recorded commit and

@@ -61,6 +61,9 @@ license/release status as resolved.
   historical `80a9cd...:src` base with the current Viewer HEAD's tracked
   `src/protocol/d2b-reference/` blobs. It must not be committed or replaced
   with working-tree bytes or the current root harness.
+- Current D2B provenance is the pinned commit plus exact copied-reference Git
+  tree OID. Materialization and current candidate builds must verify the
+  current HEAD subtree against that OID before generating any output.
 - `tools/product-repro/verify-beta1-reproduction.py` verifies historical
   beta.1 only. Its app.css LF-to-CRLF adapter is restricted to the exact pinned
   beta.1 input inside a disposable tree; it is not a current product build

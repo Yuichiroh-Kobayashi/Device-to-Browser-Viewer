@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 
 BASE_VIEWER_COMMIT = "80a9cd308cb3c6c5a1ccc27241cd645803675921"
 D2B_AUTHORITY_COMMIT = "b30ad676922af73448952d5a9cac312467a944f9"
+D2B_REFERENCE_TREE_OID = "6e5b4844548c1355dea7e5cbbcb1200c9d2335fd"
 BUILDER_SHA256 = "616e1e4aff16d21b49f4d0b8f3c8bda46a5f47ad09d4a2eb9a0b0227ca06c5aa"
 BUILDER_LINES = 368
 BUILDER_RELATIVE = Path("tools/p2-builder/p2-builder.py")
@@ -66,6 +67,26 @@ def clean_head(repository: Path) -> str:
         paths = dirty.decode("utf-8", errors="replace").splitlines()
         raise CurrentBuildError(f"Viewer worktree is not clean: {paths}")
     return head
+
+
+def verify_d2b_reference_tree(repository: Path, viewer_head: str) -> str:
+    observed = run_git(
+        repository,
+        "rev-parse",
+        "--verify",
+        f"{viewer_head}:{OVERLAY_PREFIX.as_posix()}",
+    ).decode().strip()
+    object_type = run_git(repository, "cat-file", "-t", observed).decode().strip()
+    if object_type != "tree":
+        raise CurrentBuildError(
+            f"Viewer D2B reference object is not a Git tree: {object_type}"
+        )
+    if observed != D2B_REFERENCE_TREE_OID:
+        raise CurrentBuildError(
+            "D2B reference tree identity mismatch: "
+            f"expected={D2B_REFERENCE_TREE_OID} observed={observed}"
+        )
+    return observed
 
 
 def tree_blobs(
@@ -272,6 +293,9 @@ def main() -> int:
     try:
         repository = repository_root()
         viewer_head = clean_head(repository)
+        observed_d2b_reference_tree_oid = verify_d2b_reference_tree(
+            repository, viewer_head
+        )
         verify_commit(repository, BASE_VIEWER_COMMIT)
         evidence_root = Path(tempfile.mkdtemp(prefix="device-to-browser-viewer-current-product-"))
         generation_root = evidence_root / "viewer"
@@ -316,6 +340,8 @@ def main() -> int:
             "evidence_root": str(evidence_root),
             "viewer_source_commit": viewer_head,
             "d2b_authority_commit": D2B_AUTHORITY_COMMIT,
+            "d2b_reference_tree_oid": D2B_REFERENCE_TREE_OID,
+            "observed_d2b_reference_tree_oid": observed_d2b_reference_tree_oid,
             "historical_source_export_base": BASE_VIEWER_COMMIT,
             "recovered_builder_sha256": BUILDER_SHA256,
             "builder_adapter_changed_constants": [

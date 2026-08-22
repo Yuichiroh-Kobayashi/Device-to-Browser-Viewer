@@ -30,8 +30,10 @@ development/validation harness, see the top of [`README.md`](../README.md).
    missing product-source lineage into Git.
 
 8. The current `src/protocol/d2b-reference` is an exact whole-tree copy of
-   D2B authority `b30ad676922af73448952d5a9cac312467a944f9`, including the
-   Public Status Standard R1 `validatePublicStatus()` reference source.
+   D2B authority commit `b30ad676922af73448952d5a9cac312467a944f9`
+   and `reference/browser/src` tree OID
+   `6e5b4844548c1355dea7e5cbbcb1200c9d2335fd`, including the Public Status
+   Standard R1 `validatePublicStatus()` reference source.
    Historical beta.1 reproduction remains pinned separately to
    `5411ba59a12882345d32218eda367bd6ba35ef5d`.
 
@@ -46,7 +48,8 @@ development/validation harness, see the top of [`README.md`](../README.md).
     with only `src/protocol/d2b-reference/` replaced by tracked blobs from the
     current Viewer HEAD. The generated `src/product/source-export/` tree is
     ignored and is not a second source authority. An exact existing composite
-    is an idempotent pass; unknown content is not overwritten or deleted.
+    is an idempotent pass; unknown content is not overwritten or deleted. The
+    materializer verifies the copied subtree tree OID before materialization.
 
 12. A clean product-development layout uses the current Git blob
     representation unchanged. After materialization, all five
@@ -83,7 +86,9 @@ development/validation harness, see the top of [`README.md`](../README.md).
     Student+Professional candidate only from a clean committed Viewer HEAD. It
     uses the recovered builder through a disposable adapter that changes only
     `EXPECTED_ROOT`, `VIEWER_COMMIT`, and `D2B_COMMIT`; the tracked
-    historical builder remains byte-identical.
+    historical builder remains byte-identical. The copied D2B subtree must
+    match the pinned tree OID before an evidence root or builder adaptation is
+    created.
 
 19. Current product builds use the tracked LF `app.css` unchanged. The
     historical beta.1 CRLF adapter remains exclusive to

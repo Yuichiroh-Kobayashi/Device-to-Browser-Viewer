@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 
 BASE_VIEWER_COMMIT = "80a9cd308cb3c6c5a1ccc27241cd645803675921"
 D2B_REFERENCE_COMMIT = "b30ad676922af73448952d5a9cac312467a944f9"
+D2B_REFERENCE_TREE_OID = "6e5b4844548c1355dea7e5cbbcb1200c9d2335fd"
 BASE_SOURCE_PREFIX = PurePosixPath("src")
 OVERLAY_SOURCE_PREFIX = PurePosixPath("src/protocol/d2b-reference")
 OVERLAY_TARGET_PREFIX = PurePosixPath("src/protocol/d2b-reference")
@@ -51,6 +52,26 @@ def verify_commit(repository: Path, commit: str) -> None:
     resolved = run_git(repository, "rev-parse", "--verify", f"{commit}^{{commit}}").decode().strip()
     if resolved != commit:
         raise MaterializeError(f"Git commit did not resolve exactly: {commit}")
+
+
+def verify_d2b_reference_tree(repository: Path, viewer_head: str) -> str:
+    observed = run_git(
+        repository,
+        "rev-parse",
+        "--verify",
+        f"{viewer_head}:{OVERLAY_SOURCE_PREFIX.as_posix()}",
+    ).decode().strip()
+    object_type = run_git(repository, "cat-file", "-t", observed).decode().strip()
+    if object_type != "tree":
+        raise MaterializeError(
+            f"Viewer D2B reference object is not a Git tree: {object_type}"
+        )
+    if observed != D2B_REFERENCE_TREE_OID:
+        raise MaterializeError(
+            "D2B reference tree identity mismatch: "
+            f"expected={D2B_REFERENCE_TREE_OID} observed={observed}"
+        )
+    return observed
 
 
 def tree_blobs(
@@ -221,6 +242,9 @@ def main() -> int:
         verify_commit(repository, BASE_VIEWER_COMMIT)
         viewer_head = run_git(repository, "rev-parse", "HEAD").decode().strip()
         verify_commit(repository, viewer_head)
+        observed_d2b_reference_tree_oid = verify_d2b_reference_tree(
+            repository, viewer_head
+        )
         blobs, overlay_file_count = composite_blobs(repository, viewer_head)
         viewer_root = repository.joinpath(*TARGET_RELATIVE.parts)
         action = materialize(repository, viewer_root, blobs)
@@ -233,6 +257,10 @@ def main() -> int:
                     "base_viewer_tree": "src",
                     "viewer_head": viewer_head,
                     "d2b_reference_commit": D2B_REFERENCE_COMMIT,
+                    "d2b_reference_tree_oid": D2B_REFERENCE_TREE_OID,
+                    "observed_d2b_reference_tree_oid": (
+                        observed_d2b_reference_tree_oid
+                    ),
                     "overlay_source": OVERLAY_SOURCE_PREFIX.as_posix(),
                     "overlay_file_count": overlay_file_count,
                     "target": TARGET_RELATIVE.as_posix(),

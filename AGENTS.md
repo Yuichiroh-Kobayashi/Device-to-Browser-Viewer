@@ -57,15 +57,19 @@ license/release status as resolved.
 - Before product-source work, run
   `python3 tools/product-repro/materialize-source-export.py` and all
   `src/product/p2-sp/tests/*.test.mjs` tests.
-- The generated `src/product/source-export/` tree comes from the pinned
-  historical Git object and must not be committed or replaced with the current
-  root harness.
+- The generated `src/product/source-export/` tree composes the pinned
+  historical `80a9cd...:src` base with the current Viewer HEAD's tracked
+  `src/protocol/d2b-reference/` blobs. It must not be committed or replaced
+  with working-tree bytes or the current root harness.
 - `tools/product-repro/verify-beta1-reproduction.py` verifies historical
   beta.1 only. Its app.css LF-to-CRLF adapter is restricted to the exact pinned
   beta.1 input inside a disposable tree; it is not a current product build
   rule.
 - The accepted beta.1 identity is not the expected hash for future product
   changes. Any future product source change requires a new bundle identity.
+- Build a current product candidate only from a clean final HEAD with
+  `python3 tools/product-repro/build-current-product.py`. Any later tracked
+  commit invalidates that candidate and requires a rebuild.
 - Do not change product runtime source or the recovered historical builder to
   make the Issue #4 reproduction checks pass.
 

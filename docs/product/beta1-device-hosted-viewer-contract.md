@@ -27,6 +27,8 @@ This document describes beta.1 product behavior. It does not by itself establish
 
 ## Source reproduction
 
-The accepted beta.1 device-hosted bundle can be reproduced exactly from pinned Git-managed inputs. Current product tests use an ignored source-export generated without byte conversion; historical reproduction applies the proven beta.1 CRLF representation of `app.css` only inside a disposable verifier tree. See [`tools/product-repro/README.md`](../../tools/product-repro/README.md), [`docs/viewer-source-authority.md`](../viewer-source-authority.md), and [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4).
+The accepted beta.1 device-hosted bundle can be reproduced exactly from pinned Git-managed inputs. Historical reproduction applies the proven beta.1 CRLF representation of `app.css` only inside a disposable verifier tree and remains pinned to D2B authority `5411ba59a12882345d32218eda367bd6ba35ef5d`. See [`tools/product-repro/README.md`](../../tools/product-repro/README.md), [`docs/viewer-source-authority.md`](../viewer-source-authority.md), and [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4).
 
 This source/build provenance repair does not modify the beta.1 runtime, its accepted bundle identity, Firmware/AssetPool, or the recorded physical validation.
+
+Current post-beta.1 Viewer source consumes Public Status Standard R1 through the exact D2B `validatePublicStatus()` reference source pinned to `b30ad676922af73448952d5a9cac312467a944f9`. It preserves the beta.1 fail-closed bootstrap surface and Student/Professional behavior while producing a new bundle identity from current LF source. This Viewer source change does not itself change a device-served bundle: the Firmware producer logic is already R1-compatible, but a later Firmware Viewer AssetPool/bundle intake is required after the Viewer change is merged.

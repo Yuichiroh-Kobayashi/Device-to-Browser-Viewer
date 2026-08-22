@@ -1,0 +1,507 @@
+{
+  "format": "d2b-stream-test-vectors/0.1",
+  "protocol": "d2b-stream",
+  "version": "0.1",
+  "vectors": [
+    {
+      "name": "public_status_required_idle",
+      "purpose": "Accept the four required fields in idle state.",
+      "category": "positive",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0
+      },
+      "expected_valid": true,
+      "expected_decoded": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0
+      }
+    },
+    {
+      "name": "public_status_required_streaming",
+      "purpose": "Accept the four required fields in streaming state.",
+      "category": "positive",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "streaming",
+        "uptime_us": 1
+      },
+      "expected_valid": true,
+      "expected_decoded": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "streaming",
+        "uptime_us": 1
+      }
+    },
+    {
+      "name": "public_status_all_optional_zero",
+      "purpose": "Accept all optional metrics at zero.",
+      "category": "positive",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "producer_drop_count": 0,
+        "output_queue_drop_count": 0,
+        "queued_sample_count": 0,
+        "connected_client_count": 0
+      },
+      "expected_valid": true,
+      "expected_decoded": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "producer_drop_count": 0,
+        "output_queue_drop_count": 0,
+        "queued_sample_count": 0,
+        "connected_client_count": 0
+      }
+    },
+    {
+      "name": "public_status_all_optional_nonzero",
+      "purpose": "Accept the current full representation with nonzero metrics.",
+      "category": "positive",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "streaming",
+        "uptime_us": 123456,
+        "producer_drop_count": 2,
+        "output_queue_drop_count": 3,
+        "queued_sample_count": 8,
+        "connected_client_count": 1
+      },
+      "expected_valid": true,
+      "expected_decoded": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "streaming",
+        "uptime_us": 123456,
+        "producer_drop_count": 2,
+        "output_queue_drop_count": 3,
+        "queued_sample_count": 8,
+        "connected_client_count": 1
+      }
+    },
+    {
+      "name": "public_status_safe_max_cumulative",
+      "purpose": "Accept the browser-safe maximum for uptime and cumulative counters.",
+      "category": "positive",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 9007199254740991,
+        "producer_drop_count": 9007199254740991,
+        "output_queue_drop_count": 9007199254740991
+      },
+      "expected_valid": true,
+      "expected_decoded": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 9007199254740991,
+        "producer_drop_count": 9007199254740991,
+        "output_queue_drop_count": 9007199254740991
+      }
+    },
+    {
+      "name": "public_status_safe_max_gauges",
+      "purpose": "Accept the browser-safe maximum for both optional gauges.",
+      "category": "positive",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "queued_sample_count": 9007199254740991,
+        "connected_client_count": 9007199254740991
+      },
+      "expected_valid": true,
+      "expected_decoded": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "queued_sample_count": 9007199254740991,
+        "connected_client_count": 9007199254740991
+      }
+    },
+    {
+      "name": "public_status_mixed_optional_subset",
+      "purpose": "Accept any subset of the named optional metrics without default insertion.",
+      "category": "positive",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "producer_drop_count": 4,
+        "connected_client_count": 2
+      },
+      "expected_valid": true,
+      "expected_decoded": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "producer_drop_count": 4,
+        "connected_client_count": 2
+      }
+    },
+    {
+      "name": "public_status_integral_decimal",
+      "purpose": "Accept an integral parsed JSON number regardless of its 1.0 text spelling.",
+      "category": "positive",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 1.0
+      },
+      "expected_valid": true,
+      "expected_decoded": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 1.0
+      }
+    },
+    {
+      "name": "public_status_root_array",
+      "purpose": "Reject a non-object root value.",
+      "category": "structural",
+      "document": [],
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_missing_protocol",
+      "purpose": "Reject a missing protocol field.",
+      "category": "structural",
+      "document": {
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_wrong_protocol",
+      "purpose": "Reject the wrong protocol identity.",
+      "category": "structural",
+      "document": {
+        "protocol": "other-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_missing_version",
+      "purpose": "Reject a missing version field.",
+      "category": "structural",
+      "document": {
+        "protocol": "d2b-stream",
+        "state": "idle",
+        "uptime_us": 0
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_wrong_version",
+      "purpose": "Reject the wrong protocol version.",
+      "category": "structural",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.2",
+        "state": "idle",
+        "uptime_us": 0
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_missing_state",
+      "purpose": "Reject a missing state field.",
+      "category": "structural",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "uptime_us": 0
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_unknown_state",
+      "purpose": "Reject a public state extension not defined by R1.",
+      "category": "structural",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "fault",
+        "uptime_us": 0
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_missing_uptime",
+      "purpose": "Reject a missing uptime_us field.",
+      "category": "structural",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle"
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_negative_uptime",
+      "purpose": "Reject negative uptime_us.",
+      "category": "numeric",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": -1
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_fractional_uptime",
+      "purpose": "Reject fractional uptime_us.",
+      "category": "numeric",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0.5
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_unsafe_uptime",
+      "purpose": "Reject uptime_us above the browser-safe maximum.",
+      "category": "numeric",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 9007199254740992
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_negative_metric",
+      "purpose": "Reject a negative optional metric.",
+      "category": "numeric",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "producer_drop_count": -1
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_fractional_metric",
+      "purpose": "Reject a fractional optional metric.",
+      "category": "numeric",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "output_queue_drop_count": 0.5
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_unsafe_metric",
+      "purpose": "Reject an optional metric above the browser-safe maximum.",
+      "category": "numeric",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "queued_sample_count": 9007199254740992
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_unknown_field",
+      "purpose": "Reject an unregistered field, including an in-band schema version.",
+      "category": "structural",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "schema_version": 1
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_null_numeric",
+      "purpose": "Reject null in a numeric field.",
+      "category": "structural",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": null
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_string_integer",
+      "purpose": "Reject an integer encoded as a string.",
+      "category": "structural",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "producer_drop_count": "1"
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_authentication_injection",
+      "purpose": "Reject authentication or token material in public status.",
+      "category": "privacy",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "authentication": {
+          "scheme": "pairing-token"
+        },
+        "token": "secret"
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_stream_id_injection",
+      "purpose": "Reject stream or session identifiers in public status.",
+      "category": "privacy",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "stream_id": 7,
+        "session_id": "private-session"
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_client_identity_injection",
+      "purpose": "Reject client identity in public status.",
+      "category": "privacy",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "client_id": "student-browser"
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_device_identifier_injection",
+      "purpose": "Reject MAC, IP, and device serial identifiers in public status.",
+      "category": "privacy",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "mac_address": "00:11:22:33:44:55",
+        "ip_address": "192.0.2.1",
+        "device_serial": "SERIAL-1"
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_raw_measurement_injection",
+      "purpose": "Reject raw voltage or current measurements in public status.",
+      "category": "privacy",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "voltage": 1.5,
+        "current": 0.2
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_filesystem_injection",
+      "purpose": "Reject filesystem paths and filenames in public status.",
+      "category": "privacy",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "file_path": "/records/private.csv",
+        "filename": "private.csv"
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    },
+    {
+      "name": "public_status_private_error_injection",
+      "purpose": "Reject private implementation error detail in public status.",
+      "category": "privacy",
+      "document": {
+        "protocol": "d2b-stream",
+        "version": "0.1",
+        "state": "idle",
+        "uptime_us": 0,
+        "last_error": {
+          "code": "internal",
+          "detail": "private"
+        }
+      },
+      "expected_valid": false,
+      "expected_error": "invalid_public_status"
+    }
+  ],
+  "schema_draft": "2020-12",
+  "schema_id": "urn:d2b-stream:0.1:public-status:r1"
+}

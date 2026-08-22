@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash, webcrypto } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { assessDeployment, bootstrapDeviceHosted, sha256RawBytes } from "../presentation/deployment-context.js";
+import { validatePublicStatus } from "../../source-export/viewer/src/protocol/d2b-reference/public-status-validator.js";
 
 const raw = new TextEncoder().encode('{"a":1}');
 const reserialized = new TextEncoder().encode('{ "a": 1 }');
@@ -38,6 +40,41 @@ async function bootstrap(options) {
   const responses = responsesFor(options);
   return bootstrapDeviceHosted({ fetcher: async (url) => responses[url], pageAuthority: "http://a/", configuredWsAuthority: "ws://a/d2b/v0/stream" });
 }
+
+const publicStatusCorpus = JSON.parse(await readFile(
+  new URL("../../../../fixtures/golden/public-status.json", import.meta.url),
+  "utf8",
+));
+assert.equal(publicStatusCorpus.schema_id, "urn:d2b-stream:0.1:public-status:r1");
+assert.equal(publicStatusCorpus.vectors.length, 32);
+let validPublicStatusVectors = 0;
+let invalidPublicStatusVectors = 0;
+for (const vector of publicStatusCorpus.vectors) {
+  if (vector.expected_valid) {
+    assert.equal(validatePublicStatus(vector.document), vector.document, vector.name);
+    assert.equal((await bootstrap({ status: vector.document })).startAllowed, true, vector.name);
+    validPublicStatusVectors += 1;
+  } else {
+    assert.throws(
+      () => validatePublicStatus(vector.document),
+      (error) => error?.code === "invalid_public_status",
+      vector.name,
+    );
+    assert.equal(
+      (await bootstrap({ status: vector.document })).bundleStatus,
+      "identity-unavailable",
+      vector.name,
+    );
+    invalidPublicStatusVectors += 1;
+  }
+}
+assert.equal(validPublicStatusVectors + invalidPublicStatusVectors, 32);
+const privateSentinel = "VIEWER_PRIVATE_STATUS_SENTINEL";
+assert.throws(
+  () => validatePublicStatus({ ...validStatus, token: privateSentinel }),
+  (error) => error?.code === "invalid_public_status" && !error.message.includes(privateSentinel),
+);
+console.log(`PASS Public Status Standard R1 vectors ${validPublicStatusVectors} valid + ${invalidPublicStatusVectors} invalid = 32/32; private detail not echoed`);
 
 const ok = assessDeployment({ target: "device-hosted", pageAuthority: "http://a/", configuredWsAuthority: "ws://a/d2b/v0/stream", manifestHash: hash, deviceBundleId: hash, displayName: "Both" });
 const mismatch = assessDeployment({ target: "device-hosted", pageAuthority: "http://a/", configuredWsAuthority: "ws://a/d2b/v0/stream", manifestHash: hash, deviceBundleId: "y", displayName: "Both" });

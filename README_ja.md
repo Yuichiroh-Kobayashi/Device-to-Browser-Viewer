@@ -25,8 +25,10 @@ source/build provenance:
 [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)、
 [`docs/provenance/`](docs/provenance/)。
 
-これは、VAMeter-Eduのdevice-hosted Viewer profileがdeviceから直接配信する
-Viewer bundleです。VAMeter-Eduでは、Windows Edge 151および第7世代iPad
+このlineageのpublish済みbeta.1 bundleが、現在VAMeter-Eduのdevice-hosted
+Viewer profileからdevice配信されています。current sourceの後継candidateは、
+後続Firmware Viewer AssetPool/bundle intakeまでdevice配信されません。
+VAMeter-Eduでは、Windows Edge 151および第7世代iPad
 (iPadOS 18.7.9 Safari)でこのdevice-hosted architectureの実機検証を記録して
 います(VAMeter-Eduの`docs/product/device-hosted-viewer-contract.md`参照)。
 現在の挙動:
@@ -37,6 +39,10 @@ Viewer bundleです。VAMeter-Eduでは、Windows Edge 151および第7世代iPa
   欠落・不正・未知・大文字小文字違いの場合はfail closedとなり、`Both`への
   暗黙fallbackはありません。
 - Professional modeは常にVoltage / Current両方のgraphを表示します。
+- publish済みbeta.1とcurrent sourceはいずれも不正なpublic statusをfail closed
+  します。current post-beta.1 sourceはexact Public Status Standard R1
+  `validatePublicStatus()` reference sourceで検証しますが、これは後継bundleが
+  既にdevice配信済みという主張ではありません。
 - Voltage / Current波形はdevice timestampを使用し、gapを保持し、invalidな
   測定値を0へ置き換えません。
 - device-time display windowは10 / 30 / 60秒のみで、default 60秒、streamの
@@ -58,8 +64,16 @@ python3 tools/product-repro/materialize-source-export.py
 node --test src/product/p2-sp/tests/*.test.mjs
 ```
 
-生成される`src/product/source-export/`はignore対象で、source authorityでは
-ありません。historical beta.1のexact reproductionは別の操作です。
+生成される`src/product/source-export/`はhistorical `80a9cd...:src` baseと
+current HEADのtracked D2B reference subtreeを合成します。ignore対象であり、
+source authorityではありません。すべてのtracked変更をcommitしたclean final
+HEADから、current candidateを次で決定論的にbuildできます。
+
+```sh
+python3 tools/product-repro/build-current-product.py
+```
+
+historical beta.1のexact reproductionは別の操作です。
 
 ```sh
 python3 tools/product-repro/verify-beta1-reproduction.py
@@ -72,6 +86,9 @@ accepted Firmware identityと照合します。current/future product sourceへC
 [`tools/product-repro/README.md`](tools/product-repro/README.md)と
 [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)を参照してください。
 このbuild/provenance repairはpublish済みbeta.1 runtimeや実機検証を変更しません。
+current Viewer candidateだけではdeviceがserveするbundleも変わりません。Firmware
+producer logicのR1変更は不要ですが、後続のFirmware Viewer AssetPool/bundle
+intakeが必要です。
 
 このViewerのfuture workは、リンクの無いroadmap文言ではなく、GitHub Issueで
 管理します。
@@ -142,9 +159,12 @@ Viewerを配信するため、PC・Relay・bridgeは不要です。
 
 ## Device-to-Browser Data Streamingとの関係
 
-Viewerが参照するD2B authorityは、[Device-to-Browser Data Streaming](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming)のcommit `5411ba59a12882345d32218eda367bd6ba35ef5d`、protocol `d2b-stream/0.1`です。
+current Viewer sourceが参照するD2B authorityは、[Device-to-Browser Data Streaming](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming)のcommit `b30ad676922af73448952d5a9cac312467a944f9`、protocol `d2b-stream/0.1`、Public Status Standard R1です。historical beta.1 reproductionは旧authority `5411ba59a12882345d32218eda367bd6ba35ef5d`を維持します。
 
-`src/protocol/d2b-reference/`は、このauthorityのbrowser reference parserをbyte-for-byteでコピーしたものです。Viewer独自の簡略parserには置き換えていません。32-byte envelope、sequence、device timestamp、validity、gap、stream lifecycleの意味も変更していません。
+`src/protocol/d2b-reference/`は、このcurrent authorityのbrowser reference
+source全treeをbyte-for-byteでコピーしたものです。Viewer独自の簡略parserや
+public-status validatorには置き換えていません。32-byte envelope、sequence、
+device timestamp、validity、gap、stream lifecycleの意味も変更していません。
 
 ## 対応するV/Iストリーム(harness)
 

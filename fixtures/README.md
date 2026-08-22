@@ -2,6 +2,10 @@
 
 - `golden/vi-frames.json` is copied byte-for-byte from the documented d2b
   upstream baseline. It is not generated or edited by this viewer.
+- `golden/public-status.json` is copied byte-for-byte from
+  `test-vectors/public-status.json` at D2B commit
+  `b30ad676922af73448952d5a9cac312467a944f9`. Its 32 vectors are the
+  Public Status Standard R1 consumer corpus and are not edited by this Viewer.
 - `capture/synthetic-live-capture.json` is a deterministic synthetic fixture,
   **not** a user or physical-device capture. It has the exact top-level fields
   `format`, `captured_at`, `user_agent`, `device_base_url`, `duration_seconds`,

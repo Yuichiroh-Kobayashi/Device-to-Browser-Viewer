@@ -29,8 +29,11 @@ development/validation harness, see the top of [`README.md`](../README.md).
    lineage, not the complete P2-SP product source. This commit restores that
    missing product-source lineage into Git.
 
-8. `src/protocol/d2b-reference` remains unchanged and follows D2B frozen
-   authority: `5411ba59a12882345d32218eda367bd6ba35ef5d`
+8. The current `src/protocol/d2b-reference` is an exact whole-tree copy of
+   D2B authority `b30ad676922af73448952d5a9cac312467a944f9`, including the
+   Public Status Standard R1 `validatePublicStatus()` reference source.
+   Historical beta.1 reproduction remains pinned separately to
+   `5411ba59a12882345d32218eda367bd6ba35ef5d`.
 
 9. This commit does not fix the `deployment-context.js` WebCrypto/secure-context
    problem.
@@ -38,11 +41,12 @@ development/validation harness, see the top of [`README.md`](../README.md).
 10. That behavior change is a separate, later change (not part of this commit).
 
 11. The missing product import tree is materialized by
-    `tools/product-repro/materialize-source-export.py` from the exact `src/`
-    tree at `80a9cd308cb3c6c5a1ccc27241cd645803675921`. The generated
-    `src/product/source-export/` tree is ignored and is not a second source
-    authority. An exact existing tree is an idempotent pass; unknown content
-    is not overwritten.
+    `tools/product-repro/materialize-source-export.py` as a composite: the
+    exact `80a9cd308cb3c6c5a1ccc27241cd645803675921:src` historical base,
+    with only `src/protocol/d2b-reference/` replaced by tracked blobs from the
+    current Viewer HEAD. The generated `src/product/source-export/` tree is
+    ignored and is not a second source authority. An exact existing composite
+    is an idempotent pass; unknown content is not overwritten or deleted.
 
 12. A clean product-development layout uses the current Git blob
     representation unchanged. After materialization, all five
@@ -74,3 +78,18 @@ development/validation harness, see the top of [`README.md`](../README.md).
 
 17. No machine-specific absolute paths appear in this document or in
     `docs/provenance/p2-sp-source-manifest.tsv`.
+
+18. `tools/product-repro/build-current-product.py` builds a new current
+    Student+Professional candidate only from a clean committed Viewer HEAD. It
+    uses the recovered builder through a disposable adapter that changes only
+    `EXPECTED_ROOT`, `VIEWER_COMMIT`, and `D2B_COMMIT`; the tracked
+    historical builder remains byte-identical.
+
+19. Current product builds use the tracked LF `app.css` unchanged. The
+    historical beta.1 CRLF adapter remains exclusive to
+    `verify-beta1-reproduction.py`.
+
+20. Merging a Viewer candidate does not update the bundle served by an existing
+    VAMeter-Edu firmware image. The Firmware `/status` producer needs no logic
+    change for R1, but a later Firmware Viewer AssetPool/bundle intake is
+    required to serve the new Viewer identity.

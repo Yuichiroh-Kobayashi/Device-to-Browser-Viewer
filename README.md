@@ -25,8 +25,10 @@ Source: [`src/product/p2-sp/`](src/product/p2-sp/). Current product contract:
 Source/build provenance: [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)
 and [`docs/provenance/`](docs/provenance/).
 
-This is the Viewer bundle that VAMeter-Edu's device-hosted Viewer profile
-serves directly from the device. VAMeter-Edu records physical validation on
+The published beta.1 bundle from this lineage is what VAMeter-Edu's
+device-hosted Viewer profile currently serves directly from the device. A
+current-source successor is not device-served until a later Firmware Viewer
+AssetPool/bundle intake. VAMeter-Edu records physical validation on
 Windows Edge 151 and an iPad 7th generation running iPadOS 18.7.9 Safari for
 this device-hosted architecture (see VAMeter-Edu's
 `docs/product/device-hosted-viewer-contract.md`). Current behavior:
@@ -37,6 +39,10 @@ this device-hosted architecture (see VAMeter-Edu's
   malformed, unknown, or case-altered `display_name` fails closed — there is
   no silent fallback to `Both`.
 - Professional mode always shows both Voltage and Current graphs.
+- Published beta.1 and current source both fail closed on invalid public status.
+  Current post-beta.1 source performs that check with the exact Public Status
+  Standard R1 `validatePublicStatus()` reference source; this is source/build
+  evidence, not a claim that the successor bundle is already device-served.
 - Voltage and Current waveforms use device timestamps, preserve gaps, and
   never turn an invalid sample into zero.
 - The device-time display window offers exactly 10, 30, and 60 seconds,
@@ -59,8 +65,16 @@ python3 tools/product-repro/materialize-source-export.py
 node --test src/product/p2-sp/tests/*.test.mjs
 ~~~
 
-The generated `src/product/source-export/` tree is ignored and is not source
-authority. Exact historical beta.1 reproduction is a separate operation:
+The generated `src/product/source-export/` tree composes the historical
+`80a9cd...:src` base with the current HEAD's tracked D2B reference subtree.
+It is ignored and is not source authority. After committing all current product
+changes, a clean final HEAD can build a deterministic new candidate with:
+
+~~~sh
+python3 tools/product-repro/build-current-product.py
+~~~
+
+Exact historical beta.1 reproduction is a separate operation:
 
 ~~~sh
 python3 tools/product-repro/verify-beta1-reproduction.py
@@ -73,7 +87,10 @@ identity. It does not impose CRLF on current or future product source. See
 [`tools/product-repro/README.md`](tools/product-repro/README.md) and
 [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md) for the
 exact authority and representation boundaries. This build/provenance repair
-does not change the published beta.1 runtime or its physical validation.
+does not change the published beta.1 runtime or its physical validation. The
+current Viewer candidate also does not update an already served device bundle:
+Firmware producer logic needs no R1 change, but a later Firmware Viewer
+AssetPool/bundle intake is required.
 
 Future work on this Viewer is tracked as GitHub Issues, not as unlinked
 roadmap prose:
@@ -286,11 +303,11 @@ events; the replay plan is cleared on Close. Counters remain bounded scalar stat
 samples, segments, gap events/gap samples, producer overflow, output queue drops,
 invalid voltage/current records, and viewer evictions.
 
-### Reference-parser provenance
+### Reference-source provenance
 
 The copied source is from
 <https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming>, commit
-5411ba59a12882345d32218eda367bd6ba35ef5d, source root
+b30ad676922af73448952d5a9cac312467a944f9, source root
 reference/browser/src. The complete copied paths are:
 
 ~~~text
@@ -301,6 +318,7 @@ decoder-state.js
 decoder.js
 errors.js
 protocol-constants.js
+public-status-validator.js
 strict-json.js
 value-validators.js
 profiles/pcm-audio.js
@@ -309,11 +327,12 @@ profiles/vi-measurement.js
 
 They are unmodified byte-for-byte source copies, including SPDX headers and the
 transitive PCM module. The upstream Apache-2.0 LICENSE is copied unchanged to
-LICENSES/Apache-2.0.txt; the upstream V/I golden vector is copied unchanged to
-fixtures/golden/vi-frames.json.
+LICENSES/Apache-2.0.txt; the upstream V/I and Public Status R1 golden vectors
+are copied unchanged to `fixtures/golden/`.
 
-The viewer calls public createDecoderState() and decodeBinaryFrame(); it does not
-replace decoding with a custom parser. To update, intentionally select a new
+The Viewer calls public createDecoderState(), decodeBinaryFrame(), and
+validatePublicStatus(); it does not replace decoding or public-status
+validation with a custom implementation. To update, intentionally select a new
 upstream commit, copy the entire reference/browser/src tree and LICENSE without
 edits, update this provenance text and src/protocol/README.md, review
 compatibility, and rerun all tests. Compare this baseline with:
@@ -325,6 +344,8 @@ diff -qr src/protocol/d2b-reference \
   "$D2B_ORACLE/reference/browser/src"
 cmp fixtures/golden/vi-frames.json \
   "$D2B_ORACLE/test-vectors/vi-frames.json"
+cmp fixtures/golden/public-status.json \
+  "$D2B_ORACLE/test-vectors/public-status.json"
 cmp LICENSES/Apache-2.0.txt \
   "$D2B_ORACLE/LICENSE"
 ~~~

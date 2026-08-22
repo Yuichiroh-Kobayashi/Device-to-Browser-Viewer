@@ -1,8 +1,6 @@
 import { validateCapabilities } from "../../source-export/viewer/src/protocol/d2b-reference/capabilities-validator.js";
+import { validatePublicStatus } from "../../source-export/viewer/src/protocol/d2b-reference/public-status-validator.js";
 
-const PUBLIC_STATUS_REQUIRED_FIELDS = Object.freeze(["protocol", "version", "state", "uptime_us"]);
-const PUBLIC_STATUS_COUNTER_FIELDS = Object.freeze(["producer_drop_count", "output_queue_drop_count", "queued_sample_count", "connected_client_count"]);
-const PUBLIC_STATUS_FIELDS = new Set([...PUBLIC_STATUS_REQUIRED_FIELDS, ...PUBLIC_STATUS_COUNTER_FIELDS]);
 const DISPLAY_NAMES = new Set(["Voltage", "Current", "Both"]);
 
 const SHA256_ROUND_CONSTANTS = Object.freeze([
@@ -105,16 +103,6 @@ function advertisesLiveVi(capabilities) {
   ))));
 }
 
-function isRedactedPublicStatus(status) {
-  if (!status || typeof status !== "object" || Array.isArray(status)) return false;
-  if (Object.keys(status).some((key) => !PUBLIC_STATUS_FIELDS.has(key))) return false;
-  if (status.protocol !== "d2b-stream" || status.version !== "0.1" || !["idle", "streaming"].includes(status.state)) return false;
-  if (!PUBLIC_STATUS_REQUIRED_FIELDS.every((field) => Object.hasOwn(status, field))) return false;
-  return ["uptime_us", ...PUBLIC_STATUS_COUNTER_FIELDS]
-    .filter((field) => Object.hasOwn(status, field))
-    .every((field) => Number.isSafeInteger(status[field]) && status[field] >= 0);
-}
-
 export async function bootstrapDeviceHosted({ fetcher = fetch, pageAuthority, configuredWsAuthority }) {
   try {
     const [manifestResponse, deviceResponse, capabilitiesResponse, statusResponse] = await Promise.all([
@@ -126,8 +114,8 @@ export async function bootstrapDeviceHosted({ fetcher = fetch, pageAuthority, co
     JSON.parse(new TextDecoder().decode(rawManifest));
     const device = await deviceResponse.json();
     const capabilities = validateCapabilities(await capabilitiesResponse.json());
-    const status = await statusResponse.json();
-    if (!advertisesLiveVi(capabilities) || !isRedactedPublicStatus(status)) throw new Error("invalid public status");
+    validatePublicStatus(await statusResponse.json());
+    if (!advertisesLiveVi(capabilities)) throw new Error("live V/I capability unavailable");
     return assessDeployment({ target: "device-hosted", pageAuthority, configuredWsAuthority, manifestHash, deviceBundleId: device.viewer_bundle_id, displayName: device.display_name });
   } catch { return Object.freeze({ target: "device-hosted", startAllowed: false, message: "機器情報を確認できません", bundleStatus: "identity-unavailable" }); }
 }

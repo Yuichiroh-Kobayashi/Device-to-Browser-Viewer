@@ -16,3 +16,6 @@ coverage/
 __pycache__/
 *.py[cod]
 .DS_Store
+
+# Generated from the pinned historical Viewer Git tree; never commit this copy.
+/src/product/source-export/

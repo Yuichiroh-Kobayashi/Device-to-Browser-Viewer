@@ -50,20 +50,28 @@ synthetic生成、capture replay、replay speed、任意WebSocket endpointは、
 device-hosted bundleから意図的に除外されています。これらは以下のharnessの
 development専用機能として残ります。
 
-このrepositoryのGit管理source(`src/product/p2-sp/`とbuilder
-`tools/p2-builder/p2-builder.py`)だけからacceptされたdevice-hosted bundleを
-再現する検証は、まだ実施されていません。具体的には、`src/product/p2-sp/app.js`
-と`src/product/p2-sp/presentation/deployment-context.js`は
-`src/product/source-export/viewer/...`をimportしますが、このpathはこの
-repositoryに現在commitされていません。そのため、`src/product/p2-sp/tests/`
-配下の5つのtest fileのうち4つ(`autoscale-policy.test.mjs`以外すべて)は、
-このGit tree単体では実行できません(`ERR_MODULE_NOT_FOUND`) —
-2026-08-22のread-only rerunで確認済みです。これはpublish済みbeta.1 bundleや
-その実機検証の欠陥ではなく、repository/source reproducibilityの負債であり、
-[Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4)
-で管理します。正確なprovenance chainは
-[`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)
-を参照してください。
+productの不足import treeは、pinned Git historyから再現できます。clean checkoutで
+次を実行します。
+
+```sh
+python3 tools/product-repro/materialize-source-export.py
+node --test src/product/p2-sp/tests/*.test.mjs
+```
+
+生成される`src/product/source-export/`はignore対象で、source authorityでは
+ありません。historical beta.1のexact reproductionは別の操作です。
+
+```sh
+python3 tools/product-repro/verify-beta1-reproduction.py
+```
+
+verifierはrecovered builderのtracked bytesを維持し、beta.1 `app.css`で検証済みの
+historical CRLF representationをdisposable inputだけに適用して、complete resultを
+accepted Firmware identityと照合します。current/future product sourceへCRLFを
+強制しません。正確なauthorityとrepresentation境界は
+[`tools/product-repro/README.md`](tools/product-repro/README.md)と
+[`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)を参照してください。
+このbuild/provenance repairはpublish済みbeta.1 runtimeや実機検証を変更しません。
 
 このViewerのfuture workは、リンクの無いroadmap文言ではなく、GitHub Issueで
 管理します。
@@ -72,8 +80,8 @@ repositoryに現在commitされていません。そのため、`src/product/p2-
   Student modeを単一のStart/Stop操作へ簡素化し、actionsをabove the foldに
   保つ。
 - [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4) —
-  device-hosted product Viewerのsourceを、このrepositoryのGit管理source
-  だけから再現可能にする。
+  device-hosted product ViewerのGit-source reproducibility repairと
+  clean-checkout acceptance criteriaを記録する。
 - [VAMeter-Edu Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8) —
   既存のone-active-owner D2B safety契約を超えるmulti-client product policy。
   frozenなD2B policy(one active stream owner、wrong-owner rejection、relay

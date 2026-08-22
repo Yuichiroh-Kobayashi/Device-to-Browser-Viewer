@@ -37,23 +37,40 @@ development/validation harness, see the top of [`README.md`](../README.md).
 
 10. That behavior change is a separate, later change (not part of this commit).
 
-11. This commit does not rebuild the accepted bundle.
+11. The missing product import tree is materialized by
+    `tools/product-repro/materialize-source-export.py` from the exact `src/`
+    tree at `80a9cd308cb3c6c5a1ccc27241cd645803675921`. The generated
+    `src/product/source-export/` tree is ignored and is not a second source
+    authority. An exact existing tree is an idempotent pass; unknown content
+    is not overwritten.
 
-12. Git-managed-source reproduction of the accepted bundle from these files is
-    not yet run. It is a dedicated, later verification step. Concretely,
-    `src/product/p2-sp/app.js` and
-    `src/product/p2-sp/presentation/deployment-context.js` import from
-    `src/product/source-export/viewer/...`, a path not committed to this
-    repository; 4 of the 5 test files under `src/product/p2-sp/tests/` (all
-    except `autoscale-policy.test.mjs`) fail with `ERR_MODULE_NOT_FOUND` when
-    run standalone against this Git tree — confirmed by a read-only rerun on
-    2026-08-22. The builder (`tools/p2-builder/p2-builder.py`) is expected to
-    supply that tree out-of-band; see `docs/provenance/p2-builder/README.md`.
-    This is repository/source reproducibility debt, not a defect in the
-    published beta.1 bundle or its physical validation; it is tracked at
-    [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4).
+12. A clean product-development layout uses the current Git blob
+    representation unchanged. After materialization, all five
+    `src/product/p2-sp/tests/*.test.mjs` files load and pass without
+    `ERR_MODULE_NOT_FOUND`.
 
-13. No Windows Relay becomes production architecture as a result of this change.
+13. `tools/product-repro/verify-beta1-reproduction.py` independently reproduced
+    the accepted beta.1 device-hosted bundle ID
+    `cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5`
+    from qualified product source `105bca2616ef372fe23ac0797f58b5c7383ee20c`,
+    frozen source-export `80a9cd308cb3c6c5a1ccc27241cd645803675921`,
+    and the byte-identical recovered builder. The accepted identity snapshot is
+    `docs/provenance/beta1-accepted-viewer-identity.json`.
 
-14. No machine-specific absolute paths appear in this document or in
+14. The qualified `app.css` Git blob is 1,686 LF bytes, SHA-256
+    `4801cc833dc751d8ddc78b3c8e37a27d7744cbe1932e3aad6bbed64075282a34`.
+    The accepted beta.1 builder input used the same text as a 1,718-byte CRLF
+    representation, SHA-256
+    `9307bb0aefc010bb5ad00d22fa596b19341061782f91806a5918df6b79363f93`.
+    Only the historical verifier performs this fail-closed LF-to-CRLF adapter
+    in a disposable tree. It is not a current or future source/build policy.
+
+15. Exact bundle reproduction and the five product tests prove the
+    `80a9cd308cb3c6c5a1ccc27241cd645803675921:src` source-export hypothesis
+    for this beta.1 authority. They do not make the current development harness
+    a substitute product authority.
+
+16. No Windows Relay becomes production architecture as a result of this change.
+
+17. No machine-specific absolute paths appear in this document or in
     `docs/provenance/p2-sp-source-manifest.tsv`.

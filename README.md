@@ -51,21 +51,29 @@ Synthetic generation, capture replay, replay speed, and an arbitrary
 WebSocket endpoint are intentionally excluded from this device-hosted bundle;
 those remain development-only capabilities of the harness described below.
 
-Reproducing the accepted device-hosted bundle purely from this repository's
-Git-managed source (`src/product/p2-sp/` plus the builder at
-`tools/p2-builder/p2-builder.py`) has not yet been run as a verification step.
-Concretely, `src/product/p2-sp/app.js` and
-`src/product/p2-sp/presentation/deployment-context.js` import from
-`src/product/source-export/viewer/...`, a path this repository does not
-currently commit; as a result, 4 of the 5 test files under
-`src/product/p2-sp/tests/` (all except `autoscale-policy.test.mjs`) cannot run
-standalone in this Git tree today (`ERR_MODULE_NOT_FOUND`) — confirmed by a
-read-only rerun on 2026-08-22. This is repository/source reproducibility debt,
-not a defect in the published beta.1 bundle or its physical validation; it is
-tracked at
-[Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4).
-See [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md) for
-the exact provenance chain.
+The product's missing import tree is reproducible from pinned Git history. From
+a clean checkout, run:
+
+~~~sh
+python3 tools/product-repro/materialize-source-export.py
+node --test src/product/p2-sp/tests/*.test.mjs
+~~~
+
+The generated `src/product/source-export/` tree is ignored and is not source
+authority. Exact historical beta.1 reproduction is a separate operation:
+
+~~~sh
+python3 tools/product-repro/verify-beta1-reproduction.py
+~~~
+
+That verifier retains the recovered builder's tracked bytes, applies the
+verified historical CRLF representation of beta.1 `app.css` only in its
+disposable input, and checks the complete result against the accepted Firmware
+identity. It does not impose CRLF on current or future product source. See
+[`tools/product-repro/README.md`](tools/product-repro/README.md) and
+[`docs/viewer-source-authority.md`](docs/viewer-source-authority.md) for the
+exact authority and representation boundaries. This build/provenance repair
+does not change the published beta.1 runtime or its physical validation.
 
 Future work on this Viewer is tracked as GitHub Issues, not as unlinked
 roadmap prose:
@@ -74,8 +82,8 @@ roadmap prose:
   simplify Student mode to a single Start/Stop control and keep actions above
   the fold.
 - [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4) —
-  make the device-hosted Viewer product source reproducible from this
-  repository's Git-managed source.
+  records the device-hosted Viewer Git-source reproducibility repair and its
+  clean-checkout acceptance criteria.
 - [VAMeter-Edu Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8) —
   multi-client product policy beyond the existing one-active-owner D2B safety
   contract. This is owned by VAMeter-Edu because the frozen D2B policy of one

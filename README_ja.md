@@ -2,80 +2,100 @@
 
 [English](README.md)
 
-## 概要
+このrepositoryには、性質の異なる2つのものが含まれています。読む・拡張する際は明確に区別してください。
 
-Device-to-Browser Viewerは、`d2b-stream/0.1`のストリームをブラウザーで受信・再生し、`vi-measurement`のVoltageとCurrentをデバイス時刻に基づいて表示する、依存パッケージ不要の静的Viewerです。
+1. **device-hosted product Viewer**(`src/product/p2-sp/`) — VAMeter-Edu
+   `v2.0.0-beta.1`の一部としてリリースされたStudent / Professional Viewerです。
+   deviceがこのbundleを直接配信するため、PC・cloud account・relayは不要です。
+   詳細は[device-hosted product Viewer](#device-hosted-product-viewer)を参照してください。
+2. **development / validation harness**(このrepositoryのroot `index.html`、
+   `src/`、`tools/serve.py`) — `d2b-stream/0.1`の`vi-measurement`処理を開発・
+   検証するための、依存パッケージ不要でdeveloper-orientedなViewerです。
+   synthetic生成、保存captureのreplay、任意endpointへの生Live WebSocket接続を
+   持ちます。device-hosted product bundleではなく、これらdevelopment専用機能は
+   意図的にproduct bundleから除外されています。詳細は
+   [development / validation harness](#development--validation-harness)を
+   参照してください。
 
-現在のViewerは、接続状態、プロトコル状態、デコード結果、診断情報、ライフサイクル操作を詳しく確認できる、開発・プロトコル検証向けのUIです。これは統合検証のために意図した設計であり、最終的な生徒向け授業UIではありません。
+## device-hosted product Viewer
 
-## VAMeter-Edu Liveでの利用
+Source: [`src/product/p2-sp/`](src/product/p2-sp/)。現在のproduct contract:
+[`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md)。
+source/build provenance:
+[`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)、
+[`docs/provenance/`](docs/provenance/)。
 
-Contest 2026のWindows最終検証では、次の経路で実V/IデータをViewerへ送りました。
+これは、VAMeter-Eduのdevice-hosted Viewer profileがdeviceから直接配信する
+Viewer bundleです。VAMeter-Eduでは、Windows Edge 151および第7世代iPad
+(iPadOS 18.7.9 Safari)でこのdevice-hosted architectureの実機検証を記録して
+います(VAMeter-Eduの`docs/product/device-hosted-viewer-contract.md`参照)。
+現在の挙動:
 
-```text
-VAMeter-Edu
-→ D2B
-→ Windows test-only Relay
-→ Viewer
-```
+- Student / Professionalのみで、presentation modeはありません。
+- Student modeはdeviceの厳密な`display_name`に従います。`Voltage`はVoltage
+  のみ、`Current`はCurrentのみ、`Both`は両方を表示します。`display_name`が
+  欠落・不正・未知・大文字小文字違いの場合はfail closedとなり、`Both`への
+  暗黙fallbackはありません。
+- Professional modeは常にVoltage / Current両方のgraphを表示します。
+- Voltage / Current波形はdevice timestampを使用し、gapを保持し、invalidな
+  測定値を0へ置き換えません。
+- device-time display windowは10 / 30 / 60秒のみで、default 60秒、streamの
+  reconnect/restart無しで変更できます。
+- live-frame更新でaction DOMのnode identityは安定しており、人間によるStop
+  押下がnode置換で失われることはありません。
+- deviceがViewerを配信する構成では、cloud account・インターネット接続・
+  別PCは不要です。
 
-iPadとChromebookでは、Windows上の一時ブリッジを追加した次の経路を使用しました。
+synthetic生成、capture replay、replay speed、任意WebSocket endpointは、この
+device-hosted bundleから意図的に除外されています。これらは以下のharnessの
+development専用機能として残ります。
 
-```text
-VAMeter-Edu
-→ D2B
-→ Windows test-only Relay
-→ Windows temporary bridge
-→ iPad Safari / Chromebook Chrome Viewer
-```
+このrepositoryのGit管理source(`src/product/p2-sp/`とbuilder
+`tools/p2-builder/p2-builder.py`)だけからacceptされたdevice-hosted bundleを
+再現する検証は、まだ実施されていません。具体的には、`src/product/p2-sp/app.js`
+と`src/product/p2-sp/presentation/deployment-context.js`は
+`src/product/source-export/viewer/...`をimportしますが、このpathはこの
+repositoryに現在commitされていません。そのため、`src/product/p2-sp/tests/`
+配下の5つのtest fileのうち4つ(`autoscale-policy.test.mjs`以外すべて)は、
+このGit tree単体では実行できません(`ERR_MODULE_NOT_FOUND`) —
+2026-08-22のread-only rerunで確認済みです。これはpublish済みbeta.1 bundleや
+その実機検証の欠陥ではなく、repository/source reproducibilityの負債であり、
+[Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4)
+で管理します。正確なprovenance chainは
+[`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)
+を参照してください。
 
-この検証経路はContestの統合・ブラウザーデバイス検証用です。Viewerが設計上Windowsを必要とするという意味ではありません。
+このViewerのfuture workは、リンクの無いroadmap文言ではなく、GitHub Issueで
+管理します。
 
-## Device-to-Browser Data Streamingとの関係
+- [Device-to-Browser-Viewer Issue #1](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/1) —
+  Student modeを単一のStart/Stop操作へ簡素化し、actionsをabove the foldに
+  保つ。
+- [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4) —
+  device-hosted product Viewerのsourceを、このrepositoryのGit管理source
+  だけから再現可能にする。
+- [VAMeter-Edu Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8) —
+  既存のone-active-owner D2B safety契約を超えるmulti-client product policy。
+  frozenなD2B policy(one active stream owner、wrong-owner rejection、relay
+  safety)はVAMeter-Edu側にあるため、このIssueもVAMeter-Eduが所有します。
+- [VAMeter-Edu Issue #9](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9) —
+  アナログ計器の答え合わせ用表示補正(analog-meter answer-check display
+  correction)。答え合わせ時の表示値だけを補正するpresentation-only correction
+  で、CSV・D2B measurement value・measurement pipelineは変更しません。
+  VAMeter-Eduが所有します。現在のbeta.1境界は
+  [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md)
+  を参照してください。
 
-Viewerが参照するD2B authorityは、[Device-to-Browser Data Streaming](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming)のcommit `5411ba59a12882345d32218eda367bd6ba35ef5d`、protocol `d2b-stream/0.1`です。
+## development / validation harness
 
-`src/protocol/d2b-reference/`は、このauthorityのbrowser reference parserをbyte-for-byteでコピーしたものです。Viewer独自の簡略parserには置き換えていません。32-byte envelope、sequence、device timestamp、validity、gap、stream lifecycleの意味も変更していません。
+`d2b-stream/0.1`の`vi-measurement`データを受信・再生する、依存パッケージ不要で
+developer-orientedなViewerです。VoltageとCurrentをdevice時刻に基づいて表示し、
+sequenceとdevice timestampを必要な箇所で`BigInt`として保持し、lossとinvalidity
+を可視のままにします。これは、上記のdevice-hosted product Viewerが構築される
+元となったprotocol処理を開発・検証するためのharnessであり、deviceから配信され
+るものではありません。
 
-## 対応するV/Iストリーム
-
-Live WebSocket modeでは、VAMeter-Eduの`live-vi` streamを`vi-measurement` profileとして扱います。VoltageとCurrentを個別のグラフへ表示し、最新のデコード値、sample数、segment、gap、overflow/drop、invalidなどの状態も確認できます。
-
-ViewerにはLive WebSocketのほか、synthetic previewと保存captureのreplayがあります。synthetic/capture fixtureは決定論的なテストデータであり、実機検証の証拠とは区別されます。
-
-## Viewerの主要機能
-
-- Voltage / Currentの最新値とグラフ表示
-- device timeに基づくX軸
-- Live WebSocket、capture replay、synthetic preview
-- 接続状態と`CONNECTED → READY → STREAMING → READY/CLOSED`の確認
-- デコードされたrecord、sequence、device timestampの確認
-- invalid、segment、gap、producer overflow、output queue dropの可視化
-- `Open` / `Start` / `Stop` / `Close`による明示的なライフサイクル操作
-- 有界なrecord、marker、diagnostic保持
-
-## 測定時刻・sequenceの扱い
-
-sequenceとdevice timestampは、安全な整数精度を失わないよう、必要な箇所でJavaScriptの`BigInt`として保持します。グラフへ変換するときも、まずdevice-time originとの差分を求めてから相対値を`Number`へ変換します。
-
-X軸はデコードしたdevice timeです。ブラウザーへの到着時刻はcapture replayのスケジューリング情報には使われますが、測定値のX座標には使いません。sequenceの振り直しやtimestampの圧縮も行いません。
-
-## invalid / gap の扱い
-
-invalidなVoltageまたはCurrentを0へ置き換えません。欠けた測定値を生成せず、hold-last-valueや補間でgapを消しません。segment境界、sequence gap、timebase change、reconnect、stream change、invalid期間をまたいでグラフ線を接続しません。
-
-新しいstreamやreconnectでは表示viewportを新しいstreamのepochへ切り替え、以前のstreamの測定値が新しい表示へ混入しないようにします。producer側とoutput queue側のdrop原因も同一視せず、区別して表示します。
-
-## Open / Start / Stop / Close
-
-- `Open`: 選択したsourceを開きます。Live WebSocketではendpointへ接続して`hello`を送り、`welcome`を受信すると`READY`になります。`READY`になるまでは`Start`できません。
-- `Start`: 対応する`live-vi` / `vi-measurement` streamを要求し、`stream_started`確認後に`STREAMING`としてbinary frameを受信します。
-- `Stop`: `stop_stream`を送信し、`STREAM_END`と`stream_stopped`を確認して`READY`へ戻ります。
-- `Close`: transportとsessionを閉じ、capture replayでは再生計画も破棄します。reopen後に新しいstreamが受理されると新しいviewport epochが始まり、以前のstreamを新しい表示へ混在させません。
-
-操作可否はプロトコル状態に合わせて制御されます。未完了の操作を先にUI状態へ反映しない、transactionalな扱いです。
-
-## Windowsでの起動
+### Windowsでの起動
 
 Windows PowerShellでrepository rootを開き、次を実行します。
 
@@ -89,76 +109,84 @@ Viewerのlocal URLは次です。
 http://127.0.0.1:8080/
 ```
 
-Contest 2026のvalidated Windows Relay topologyでは、ViewerのLive WebSocket endpointに次を指定しました。
+`tools/serve.py`は標準libraryだけを使うlocal development serverで、既定では
+`127.0.0.1`だけにbindします。production用LAN serverではありません。
+
+## VAMeter-Edu LiveでのContest 2026実機検証(harness)
+
+harnessのlive-WebSocket modeは、Contest 2026でViewer commit
+`80a9cd308cb3c6c5a1ccc27241cd645803675921`にて、次の経路で実V/Iデータを受信し
+実機検証されました。
 
 ```text
-ws://127.0.0.1:8765/
+VAMeter-Edu -> D2B -> Windows test-only Relay -> Viewer
 ```
 
-`tools/serve.py`は標準libraryだけを使うlocal development serverで、既定では`127.0.0.1`だけにbindします。production用LAN serverではありません。
+(`PLAN_N_WINDOWS_E2E_PASS`、`LIVE_PHYSICAL_DEMO_PASS`)。また、Windows上の
+一時ブリッジを介してiPad SafariおよびChromebook Chromeでも表示・動作を確認
+しました。このWindows Relay+bridge構成は最終的な授業用architectureではなく、
+device-hosted product Viewer(上記)がこれに置き換わりました — deviceが直接
+Viewerを配信するため、PC・Relay・bridgeは不要です。
 
-## Contest 2026で検証した構成
+詳細な数値・result labelは変更せずに
+[`docs/archive/contest-2026/physical-validation-narrative.md`](docs/archive/contest-2026/physical-validation-narrative.md)
+に保存しています。
 
-実機最終検証のViewer authorityはcommit `80a9cd308cb3c6c5a1ccc27241cd645803675921`です。検証時のtreeはcleanでした。以後のdocs-only commitではruntime sourceを変更していません。
+## Device-to-Browser Data Streamingとの関係
 
-Windows build 26100、Chrome 151.0.7922.108 64-bitで、`PLAN_N_WINDOWS_E2E_PASS`および`LIVE_PHYSICAL_DEMO_PASS`を確認しました。観測結果はbinary frame 5,996、sample 5,995、segment 1、実回路のVoltage変化0 V → 2.4325 Vです。このrunではdevice drop counterが0/0、Relayのerror / overflow / drop / timeoutが0/0/0/0でした。
+Viewerが参照するD2B authorityは、[Device-to-Browser Data Streaming](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming)のcommit `5411ba59a12882345d32218eda367bd6ba35ef5d`、protocol `d2b-stream/0.1`です。
 
-これらは当該runの観測値であり、zero packet loss保証、均一で保証された25 Hz、長時間production qualificationを意味しません。
+`src/protocol/d2b-reference/`は、このauthorityのbrowser reference parserをbyte-for-byteでコピーしたものです。Viewer独自の簡略parserには置き換えていません。32-byte envelope、sequence、device timestamp、validity、gap、stream lifecycleの意味も変更していません。
 
-## iPadでの検証結果
+## 対応するV/Iストリーム(harness)
 
-iPad Pro 11-inch (M1)、iPadOS 26.5、Safariで、Windowsの一時ブリッジを経由して実V/I streamを表示しました。`READY`、`STREAMING`、sample数の増加、segment 1を確認し、実回路のVoltage変化に対応して約2.6–2.9 Vのグラフ変化を確認しました。clean lifecycle retryではStop / CloseもPASSしました。
+harnessのLive WebSocket modeでは、VAMeter-Eduの`live-vi` streamを
+`vi-measurement` profileとして扱います。VoltageとCurrentを個別のグラフへ表示
+し、最新のデコード値、sample数、segment、gap、overflow/drop、invalidなどの
+状態も確認できます。
 
-保存するresult labelは次のとおりです。
+harnessにはLive WebSocketのほか、synthetic previewと保存captureのreplayが
+あります。これらはdevice-hosted product bundleには含まれない
+development専用機能です。synthetic/capture fixtureは決定論的なテストデータで
+あり、実機検証の証拠とは区別されます。
 
-```text
-P5_IPAD_VIEWER_HTTP_PASS
-P5_IPAD_WEBSOCKET_READY_PASS
-P5_IPAD_LIVE_DATA_PASS
-P8_IPAD_LIVE_PHYSICAL_PASS
-IPAD_VIEWER_VIA_WINDOWS_PASS
-```
+## 測定時刻・sequenceの扱い
 
-## Chromebookでの確認結果
+sequenceとdevice timestampは、安全な整数精度を失わないよう、必要な箇所でJavaScriptの`BigInt`として保持します。グラフへ変換するときも、まずdevice-time originとの差分を求めてから相対値を`Number`へ変換します。
 
-Lenovo CT-X636F、ChromeOS board/version `krane 150.16700.0`、Chrome 150.0.7871.222でも、同じWindows一時ブリッジを経由してViewerの表示・live動作が良好であることを確認しました。
+X軸はデコードしたdevice timeです。ブラウザーへの到着時刻はcapture replayのスケジューリング情報には使われますが、測定値のX座標には使いません。sequenceの振り直しやtimestampの圧縮も行いません。
 
-この記録は、formal Chromebook end-to-end qualificationを主張するものではありません。
+## invalid / gap の扱い
 
-## temporary Windows bridgeについて
+invalidなVoltageまたはCurrentを0へ置き換えません。欠けた測定値を生成せず、hold-last-valueや補間でgapを消しません。segment境界、sequence gap、timebase change、reconnect、stream change、invalid期間をまたいでグラフ線を接続しません。
 
-最終Contest検証では、Windows上のE2E経路に加えて、Windowsの一時ブリッジを経由したiPad Safari上で実V/Iデータを表示し、実回路の電圧変化に対応してグラフが変化することを確認しました。
+新しいstreamやreconnectでは表示viewportを新しいstreamのepochへ切り替え、以前のstreamの測定値が新しい表示へ混入しないようにします。producer側とoutput queue側のdrop原因も同一視せず、区別して表示します。
 
-ChromebookのChromeでも同じViewerの表示・動作を確認しています。
+## Open / Start / Stop / Close(harness)
 
-ただし、これはiPad/ChromebookからVAMeter-Eduへ直接接続した試験ではありません。Windows bridgeはContestの統合・ブラウザーデバイス検証だけに使用したもので、最終的な授業用architectureではありません。bridge/Relayの実装はこのViewer repositoryの責務にも含めません。
+- `Open`: 選択したsourceを開きます。Live WebSocketではendpointへ接続して`hello`を送り、`welcome`を受信すると`READY`になります。`READY`になるまでは`Start`できません。
+- `Start`: 対応する`live-vi` / `vi-measurement` streamを要求し、`stream_started`確認後に`STREAMING`としてbinary frameを受信します。
+- `Stop`: `stop_stream`を送信し、`STREAM_END`と`stream_stopped`を確認して`READY`へ戻ります。
+- `Close`: transportとsessionを閉じ、capture replayでは再生計画も破棄します。reopen後に新しいstreamが受理されると新しいviewport epochが始まり、以前のstreamを新しい表示へ混在させません。
+
+操作可否はプロトコル状態に合わせて制御されます。未完了の操作を先にUI状態へ反映しない、transactionalな扱いです。
 
 ## 現在の制約
 
+### harness
+
 - direct iPad/Chromebook-to-VAMeter通信は未検証です。
 - Chromebookは表示・live動作の確認であり、iPadと同じ全lifecycle gateを保存したformal E2E qualificationではありません。
-- no-PC-required、multi-client、production-ready tablet/Chromebook supportは主張しません。
+- no-PC-required、multi-client、production-ready tablet/Chromebook supportは主張しません(これはWindows Relay+bridge経路についての記述であり、device-hosted product Viewerはそもそもこの経路を使いません)。
 - long soak、heap trend、capacity edge、production releaseは未実施です。
 - CSV/export、device asset serving、GitHub Pagesは未実施です。
 - frozen runtime page内のvalidation noteは最終実機試験より前の文言です。実機検証済みsourceとのbyte-for-byte equivalenceを保つため変更せず、最終authorityとscopeはこのREADMEに記録します。
 
-## 今後の教育用Viewerへの改修
+### device-hosted product
 
-現在のViewerはdeveloper-orientedで、protocolとintegrationを検証するために詳細な状態を意図的に表示しています。次の大きなUI作業は、測定・時刻・invalid/gap・lifecycleの意味を保ったまま、education-oriented Viewerへ発展させることです。
-
-今後の候補は次のとおりです。
-
-- Voltage / Current値の大型表示
-- より大きく見やすいグラフ
-- protocol/diagnostic操作の整理
-- 生徒向けに簡潔なStart / Stop操作
-- 測定状態を理解しやすいindicator
-- 授業に適したauto-scaling
-- tablet / Chromebook向けlayout
-- 大型display / presentation mode
-- 電気現象の理解に役立つ情報へのfocus
-
-これらはfuture workであり、今回のdocs-only finalizationでは実装しません。
+multi-client policyや数値表示スタイルなど、device-hosted productの現在の制約は
+[`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md)
+を参照してください。
 
 ## 関連Repository
 

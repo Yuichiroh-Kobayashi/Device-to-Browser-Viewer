@@ -49,6 +49,9 @@ development/validation harness, see the top of [`README.md`](../README.md).
     run standalone against this Git tree — confirmed by a read-only rerun on
     2026-08-22. The builder (`tools/p2-builder/p2-builder.py`) is expected to
     supply that tree out-of-band; see `docs/provenance/p2-builder/README.md`.
+    This is repository/source reproducibility debt, not a defect in the
+    published beta.1 bundle or its physical validation; it is tracked at
+    [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4).
 
 13. No Windows Relay becomes production architecture as a result of this change.
 

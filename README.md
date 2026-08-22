@@ -60,9 +60,12 @@ Concretely, `src/product/p2-sp/app.js` and
 currently commit; as a result, 4 of the 5 test files under
 `src/product/p2-sp/tests/` (all except `autoscale-policy.test.mjs`) cannot run
 standalone in this Git tree today (`ERR_MODULE_NOT_FOUND`) — confirmed by a
-read-only rerun on 2026-08-22. See
-[`docs/viewer-source-authority.md`](docs/viewer-source-authority.md) for the
-exact provenance chain and open verification item.
+read-only rerun on 2026-08-22. This is repository/source reproducibility debt,
+not a defect in the published beta.1 bundle or its physical validation; it is
+tracked at
+[Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4).
+See [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md) for
+the exact provenance chain.
 
 Future work on this Viewer is tracked as GitHub Issues, not as unlinked
 roadmap prose:
@@ -70,10 +73,20 @@ roadmap prose:
 - [Device-to-Browser-Viewer Issue #1](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/1) —
   simplify Student mode to a single Start/Stop control and keep actions above
   the fold.
+- [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4) —
+  make the device-hosted Viewer product source reproducible from this
+  repository's Git-managed source.
 - [VAMeter-Edu Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8) —
   multi-client product policy beyond the existing one-active-owner D2B safety
   contract. This is owned by VAMeter-Edu because the frozen D2B policy of one
   active stream owner, wrong-owner rejection, and relay safety lives there.
+- [VAMeter-Edu Issue #9](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9) —
+  analog-meter answer-check display correction (アナログ計器の答え合わせ用表示補正), a
+  presentation-only correction to the answer-check display value that does
+  not touch CSV, D2B measurement values, or the measurement pipeline. Owned
+  by VAMeter-Edu; see
+  [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md)
+  for its current beta.1 boundary.
 
 ## Development / validation harness
 
@@ -230,10 +243,10 @@ semantics or promote the temporary Relay/bridge into Viewer architecture.
 
 The local static server is a development tool, not a production LAN server.
 Public deployment still requires an explicit file allowlist, dotfile denial,
-non-loopback warning, and CSP review. Viewer-owned code licensing is
-`OWNER_DECISION_REQUIRED_BEFORE_RELEASE`; the copied parser's Apache-2.0
-provenance is unchanged. Long-soak capacity-edge and heap-trend checks remain
-deferred until a soak-testing pass is scheduled.
+non-loopback warning, and CSP review. The licensing status of Viewer-owned
+code has not yet been finalized for an independent Viewer production release;
+the copied parser's Apache-2.0 provenance is unchanged. Long-soak
+capacity-edge and heap-trend validation has not been performed.
 
 ### Semantics and bounds
 

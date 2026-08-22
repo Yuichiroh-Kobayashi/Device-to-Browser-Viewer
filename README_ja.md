@@ -58,8 +58,11 @@ development専用機能として残ります。
 repositoryに現在commitされていません。そのため、`src/product/p2-sp/tests/`
 配下の5つのtest fileのうち4つ(`autoscale-policy.test.mjs`以外すべて)は、
 このGit tree単体では実行できません(`ERR_MODULE_NOT_FOUND`) —
-2026-08-22のread-only rerunで確認済みです。正確なprovenance chainと未実施の
-検証項目は[`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)
+2026-08-22のread-only rerunで確認済みです。これはpublish済みbeta.1 bundleや
+その実機検証の欠陥ではなく、repository/source reproducibilityの負債であり、
+[Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4)
+で管理します。正確なprovenance chainは
+[`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)
 を参照してください。
 
 このViewerのfuture workは、リンクの無いroadmap文言ではなく、GitHub Issueで
@@ -68,10 +71,20 @@ repositoryに現在commitされていません。そのため、`src/product/p2-
 - [Device-to-Browser-Viewer Issue #1](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/1) —
   Student modeを単一のStart/Stop操作へ簡素化し、actionsをabove the foldに
   保つ。
+- [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4) —
+  device-hosted product Viewerのsourceを、このrepositoryのGit管理source
+  だけから再現可能にする。
 - [VAMeter-Edu Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8) —
   既存のone-active-owner D2B safety契約を超えるmulti-client product policy。
   frozenなD2B policy(one active stream owner、wrong-owner rejection、relay
   safety)はVAMeter-Edu側にあるため、このIssueもVAMeter-Eduが所有します。
+- [VAMeter-Edu Issue #9](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9) —
+  アナログ計器の答え合わせ用表示補正(analog-meter answer-check display
+  correction)。答え合わせ時の表示値だけを補正するpresentation-only correction
+  で、CSV・D2B measurement value・measurement pipelineは変更しません。
+  VAMeter-Eduが所有します。現在のbeta.1境界は
+  [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md)
+  を参照してください。
 
 ## development / validation harness
 

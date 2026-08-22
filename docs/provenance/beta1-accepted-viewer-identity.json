@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "purpose": "Historical beta.1 reproduction oracle; not an expected identity for future product builds.",
+  "source": {
+    "repository": "Yuichiroh-Kobayashi/VAMeter-Edu",
+    "release": "v2.0.0-beta.1",
+    "contract_files": [
+      "app/libs/viewer_asset_contract/viewer_asset_contract.h",
+      "app/libs/viewer_asset_contract/viewer_asset_contract.cpp"
+    ]
+  },
+  "qualified_product_source_commit": "105bca2616ef372fe23ac0797f58b5c7383ee20c",
+  "frozen_source_export_commit": "80a9cd308cb3c6c5a1ccc27241cd645803675921",
+  "d2b_authority_commit": "5411ba59a12882345d32218eda367bd6ba35ef5d",
+  "historical_builder_sha256": "616e1e4aff16d21b49f4d0b8f3c8bda46a5f47ad09d4a2eb9a0b0227ca06c5aa",
+  "historical_builder_lines": 368,
+  "historical_toolchain": {
+    "node_path": "/usr/bin/node",
+    "webpack_version": "5.76.1",
+    "terser_webpack_plugin_version": "5.3.7"
+  },
+  "historical_css_representation": {
+    "path": "src/product/p2-sp/app.css",
+    "git_blob_bytes": 1686,
+    "git_blob_sha256": "4801cc833dc751d8ddc78b3c8e37a27d7744cbe1932e3aad6bbed64075282a34",
+    "git_blob_line_endings": "LF",
+    "git_blob_lf_count": 32,
+    "git_blob_crlf_count": 0,
+    "historical_input_bytes": 1718,
+    "historical_input_sha256": "9307bb0aefc010bb5ad00d22fa596b19341061782f91806a5918df6b79363f93",
+    "transform": "LF_TO_CRLF_ONLY_FOR_HISTORICAL_BETA1_REPRODUCTION",
+    "reverse_byte_equivalence_required": true
+  },
+  "bundle": {
+    "viewer_bundle_id": "cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5",
+    "stored_bytes": 25275,
+    "entry_html": {
+      "path": "served/index.html",
+      "bytes": 573,
+      "sha256": "552d74ebddf18c360d09826bef04d4f40df886ac09e9ab464caae7c89fbc76f9"
+    },
+    "asset_manifest": {
+      "path": "served/asset-manifest.json",
+      "bytes": 1363,
+      "sha256": "cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5"
+    },
+    "css_gzip": {
+      "path": "served/assets/app.9b4bee7dbff86be783cb570d0776a6dfb4b49cae300128a1dbc13e03d30181cd.css.gz",
+      "bytes": 761,
+      "sha256": "9b4bee7dbff86be783cb570d0776a6dfb4b49cae300128a1dbc13e03d30181cd"
+    },
+    "js_gzip": {
+      "path": "served/assets/app.26b707d12a964f8e0ddd1eac50737b81dccc8d45e2162a3196e88b488770366d.js.gz",
+      "bytes": 22578,
+      "sha256": "26b707d12a964f8e0ddd1eac50737b81dccc8d45e2162a3196e88b488770366d"
+    }
+  }
+}

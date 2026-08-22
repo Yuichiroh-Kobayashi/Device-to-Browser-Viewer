@@ -52,6 +52,23 @@ validation note, a provenance manifest). Historical evidence under
 do not treat it as a live claim, and do not silently mark an unresolved
 license/release status as resolved.
 
+## Product source reproduction
+
+- Before product-source work, run
+  `python3 tools/product-repro/materialize-source-export.py` and all
+  `src/product/p2-sp/tests/*.test.mjs` tests.
+- The generated `src/product/source-export/` tree comes from the pinned
+  historical Git object and must not be committed or replaced with the current
+  root harness.
+- `tools/product-repro/verify-beta1-reproduction.py` verifies historical
+  beta.1 only. Its app.css LF-to-CRLF adapter is restricted to the exact pinned
+  beta.1 input inside a disposable tree; it is not a current product build
+  rule.
+- The accepted beta.1 identity is not the expected hash for future product
+  changes. Any future product source change requires a new bundle identity.
+- Do not change product runtime source or the recovered historical builder to
+  make the Issue #4 reproduction checks pass.
+
 ## Git safety
 
 - The primary checkout should normally remain on `main`.

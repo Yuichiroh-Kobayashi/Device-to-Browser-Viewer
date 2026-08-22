@@ -25,6 +25,8 @@ Synthetic generation, capture replay, replay speed, and an arbitrary WebSocket e
 
 This document describes beta.1 product behavior. It does not by itself establish production qualification or multi-client support.
 
-## Known limitations
+## Source reproduction
 
-Reproducing the device-hosted bundle purely from this repository's Git-managed source has not yet been verified; see [`docs/viewer-source-authority.md`](../viewer-source-authority.md) and [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4).
+The accepted beta.1 device-hosted bundle can be reproduced exactly from pinned Git-managed inputs. Current product tests use an ignored source-export generated without byte conversion; historical reproduction applies the proven beta.1 CRLF representation of `app.css` only inside a disposable verifier tree. See [`tools/product-repro/README.md`](../../tools/product-repro/README.md), [`docs/viewer-source-authority.md`](../viewer-source-authority.md), and [Device-to-Browser-Viewer Issue #4](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/4).
+
+This source/build provenance repair does not modify the beta.1 runtime, its accepted bundle identity, Firmware/AssetPool, or the recorded physical validation.

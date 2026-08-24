@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:,">
+    <title>pcm-audio spike browser self-tests</title>
+    <style>
+      body { margin: 2rem; background: #101820; color: #e8f0fb; font: 16px/1.5 system-ui, sans-serif; }
+      code, output { font-family: ui-monospace, monospace; }
+      #totals { padding: .8rem; border: 1px solid #48627b; border-radius: .5rem; }
+      li.pass { color: #86e6a8; } li.fail { color: #ff9999; }
+      canvas { width: 480px; height: 200px; background: #0e1721; border: 1px solid #35485e; }
+    </style>
+  </head>
+  <body>
+    <h1>pcm-audio spike browser self-tests</h1>
+    <p id="totals" data-machine-readable="pcm-audio-viewer-self-tests">TOTAL: pending</p>
+    <ol id="results" aria-live="polite"></ol>
+    <p id="console-errors" data-machine-readable="pcm-audio-console-errors">CONSOLE_ERRORS: 0</p>
+    <ol id="console-errors-list"></ol>
+    <canvas id="probe-canvas" width="480" height="200"></canvas>
+    <script>
+      // Capture any unexpected console.error/window error/unhandledrejection
+      // into the DOM so a headless dump can confirm there were none, since a
+      // headless run has no interactive devtools to watch.
+      window.__consoleErrors = [];
+      const originalConsoleError = console.error.bind(console);
+      console.error = (...args) => {
+        window.__consoleErrors.push(args.map(String).join(" "));
+        originalConsoleError(...args);
+      };
+      window.addEventListener("error", (event) => {
+        window.__consoleErrors.push(`window error: ${event.error?.message || event.message}`);
+      });
+      window.addEventListener("unhandledrejection", (event) => {
+        window.__consoleErrors.push(`unhandledrejection: ${event.reason?.message || event.reason}`);
+      });
+    </script>
+    <script type="module" src="pcm-viewer-self-tests.js"></script>
+  </body>
+</html>

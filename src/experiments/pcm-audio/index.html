@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Experimental spike: synthetic d2b-stream/0.1 pcm-audio receive/decode/render, additive to the harness.">
+    <title>pcm-audio Viewer spike (experimental)</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="../../../styles/app.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">d2b-stream/0.1 • pcm-audio • experimental spike</p>
+          <h1>PCM Audio Viewer (spike)</h1>
+          <p class="subtitle">Synthetic pcm-audio frames only, decoded by the real unmodified reference decoder. Not part of the V/I harness or the device-hosted product.</p>
+        </div>
+        <p class="validation-note">Experimental / additive spike. <strong>Receive → decode → render only</strong>: no recording, no WAV export, no playback.</p>
+      </header>
+
+      <section class="panel controls" aria-labelledby="controls-title">
+        <h2 id="controls-title">Synthetic source</h2>
+        <div class="control-grid">
+          <label>Scenario
+            <select id="scenario-select"></select>
+          </label>
+          <label>Preview speed
+            <select id="speed-select">
+              <option value="0.25">0.25×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+              <option value="fast">As fast as possible</option>
+            </select>
+          </label>
+          <label>Render window
+            <select id="window-select">
+              <option value="10">10 ms</option>
+              <option value="20" selected>20 ms</option>
+              <option value="50">50 ms</option>
+              <option value="100">100 ms</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions" aria-label="Source lifecycle controls">
+          <button id="open-button" type="button">Open</button>
+          <button id="start-button" type="button" class="primary">Start</button>
+          <button id="stop-button" type="button">Stop</button>
+          <button id="close-button" type="button">Close</button>
+        </div>
+        <p class="hint">Every frame is a real 544-byte d2b-stream/0.1 pcm-audio binary frame (32-byte envelope + 512-byte PCM16LE payload), decoded by the byte-for-byte copied reference decoder before this page ever sees it.</p>
+      </section>
+
+      <section class="status-layout" aria-label="Viewer status">
+        <article class="panel status-panel">
+          <h2>Protocol and bounded state</h2>
+          <dl id="status-grid" class="status-grid"></dl>
+        </article>
+        <article class="panel current-panel">
+          <h2>Latest accepted frame</h2>
+          <div class="current-values">
+            <div><span>Peak (window)</span><strong id="peak-value">—</strong><small>full scale</small></div>
+            <div><span>RMS (window)</span><strong id="rms-value">—</strong><small>full scale</small></div>
+          </div>
+          <dl id="latest-grid" class="latest-grid"></dl>
+        </article>
+      </section>
+
+      <section class="waveforms" aria-label="pcm-audio waveform">
+        <article class="panel waveform-panel">
+          <canvas id="pcm-canvas" aria-label="PCM amplitude versus exact device sample time"></canvas>
+        </article>
+      </section>
+
+      <details class="panel diagnostics-panel" open>
+        <summary>Gap / discontinuity markers (<span id="marker-count">0</span>/128)</summary>
+        <ol id="markers-list"></ol>
+      </details>
+
+      <details class="panel diagnostics-panel">
+        <summary>Bounded protocol diagnostics (<span id="diagnostic-count">0</span>/100)</summary>
+        <ol id="diagnostics-list"></ol>
+      </details>
+    </main>
+    <script type="module" src="pcm-app.js"></script>
+  </body>
+</html>

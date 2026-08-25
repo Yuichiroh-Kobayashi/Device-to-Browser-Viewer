@@ -49,11 +49,46 @@ The standard-library-only tool materializes the current committed
 `src/product/p2-sp/` source and the same composite source-export in a
 collision-free `/tmp` evidence root. Before creating that root or adapting the
 builder, it requires the current copied D2B subtree to match the pinned Git tree
-OID. It then verifies the recovered builder's tracked SHA-256
-`616e1e4aff16d21b49f4d0b8f3c8bda46a5f47ad09d4a2eb9a0b0227ca06c5aa`,
-then changes exactly `EXPECTED_ROOT`, `VIEWER_COMMIT`, and `D2B_COMMIT` in
-a disposable copy. Current LF `app.css` is used unchanged; the historical CRLF
-adapter is not applied.
+OID, and it requires the exact committed files under `src/product/p2-sp/` to
+match its own explicit `CURRENT_PRODUCT_ALLOWLIST` (see "Current-product file
+scope" below) -- a missing or unreviewed-extra file fails closed before any
+evidence root is created. It then verifies the recovered builder's tracked
+SHA-256 `616e1e4aff16d21b49f4d0b8f3c8bda46a5f47ad09d4a2eb9a0b0227ca06c5aa`,
+then changes exactly `EXPECTED_ROOT`, `VIEWER_COMMIT`, `D2B_COMMIT`, and
+`PROTOTYPE_ALLOWLIST` in a disposable copy. Current LF `app.css` is used
+unchanged; the historical CRLF adapter is not applied.
+
+### Current-product file scope
+
+The recovered historical builder (`tools/p2-builder/p2-builder.py`) carries
+its own `PROTOTYPE_ALLOWLIST`, frozen at the files approved when that builder
+was recovered. It is never edited to accept a new file -- that would remove
+its fail-closed approval boundary and is exactly the kind of change this tool
+must not make (see the tracked `BUILDER_SHA256` identity check).
+
+Instead, `build-current-product.py` owns a second, independent, explicit
+allowlist -- `CURRENT_PRODUCT_ALLOWLIST` -- listing every file currently
+approved for `src/product/p2-sp/`. Before doing anything else, it compares
+this set against the exact committed files under `HEAD:src/product/p2-sp/`
+and fails closed, with marker `CURRENT_PRODUCT_FILE_SCOPE_APPROVAL_REQUIRED`
+and explicit `missing=[...] extra=[...]` lists, on any mismatch. There is no
+wildcard acceptance of "whatever exists in HEAD".
+
+When a deliberately reviewed product change adds a new `src/product/p2-sp/`
+file, `CURRENT_PRODUCT_ALLOWLIST` in `build-current-product.py` must be
+updated to include it as part of that same review -- this is a source edit to
+the current-build tool, not something the tool infers automatically. Once
+`CURRENT_PRODUCT_ALLOWLIST` is updated, the disposable adapter carries it into
+the disposable builder copy's own `PROTOTYPE_ALLOWLIST`, so the disposable
+copy's internal `validate_prototype()` check (which still independently
+enumerates the disposable copy's own files at build time) is checked against
+the same, currently-approved set. Reversing all four disposable substitutions
+(`EXPECTED_ROOT`, `VIEWER_COMMIT`, `D2B_COMMIT`, `PROTOTYPE_ALLOWLIST`) still
+reproduces the tracked historical builder byte-for-byte; the historical
+builder's own `BUILDER_SHA256`/line-count identity is unchanged by any of
+this. Historical beta.1 reproduction (`verify-beta1-reproduction.py`) is
+unaffected -- it continues to use the recovered builder's own historical
+`PROTOTYPE_ALLOWLIST` unmodified.
 
 The JSON summary records the final Viewer commit, D2B commit/tree authority,
 observed copied-tree OID, new bundle ID, stored representations, two-run

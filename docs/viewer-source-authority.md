@@ -85,10 +85,10 @@ development/validation harness, see the top of [`README.md`](../README.md).
 18. `tools/product-repro/build-current-product.py` builds a new current
     Student+Professional candidate only from a clean committed Viewer HEAD. It
     uses the recovered builder through a disposable adapter that changes only
-    `EXPECTED_ROOT`, `VIEWER_COMMIT`, and `D2B_COMMIT`; the tracked
-    historical builder remains byte-identical. The copied D2B subtree must
-    match the pinned tree OID before an evidence root or builder adaptation is
-    created.
+    `EXPECTED_ROOT`, `VIEWER_COMMIT`, `D2B_COMMIT`, and (see item 21)
+    `PROTOTYPE_ALLOWLIST`; the tracked historical builder remains
+    byte-identical. The copied D2B subtree must match the pinned tree OID
+    before an evidence root or builder adaptation is created.
 
 19. Current product builds use the tracked LF `app.css` unchanged. The
     historical beta.1 CRLF adapter remains exclusive to
@@ -98,3 +98,29 @@ development/validation harness, see the top of [`README.md`](../README.md).
     VAMeter-Edu firmware image. The Firmware `/status` producer needs no logic
     change for R1, but a later Firmware Viewer AssetPool/bundle intake is
     required to serve the new Viewer identity.
+
+21. The recovered historical builder's own `PROTOTYPE_ALLOWLIST` is frozen at
+    its recovered identity (`BUILDER_SHA256` in
+    `tools/product-repro/build-current-product.py`) and reflects only the
+    files approved as of that recovery. A later, deliberately reviewed
+    current-product change (for example a new `src/product/p2-sp/` source or
+    test file) is not automatically accepted: `build-current-product.py` owns
+    its own explicit `CURRENT_PRODUCT_ALLOWLIST`, checked with
+    `verify_current_product_file_scope()` against the exact committed files
+    under `HEAD:src/product/p2-sp/` before any evidence root or builder
+    adaptation is created. A missing or unreviewed-extra file fails closed
+    with `CURRENT_PRODUCT_FILE_SCOPE_APPROVAL_REQUIRED` (mirroring the
+    historical builder's own `SCRATCH_FILE_SCOPE_APPROVAL_REQUIRED`, which
+    still guards the disposable copy's own file enumeration at build time).
+    There is no wildcard or implicit "whatever exists in HEAD is approved"
+    behavior in either check. When `CURRENT_PRODUCT_ALLOWLIST` differs from
+    the historical builder's own `PROTOTYPE_ALLOWLIST`, the disposable
+    adapter additionally substitutes the disposable copy's
+    `PROTOTYPE_ALLOWLIST` block with the current, explicitly reviewed
+    allowlist -- reversing all four disposable substitutions still reproduces
+    the tracked historical builder byte-for-byte. Extending
+    `CURRENT_PRODUCT_ALLOWLIST` to include a new file is a deliberate source
+    edit to `build-current-product.py`, not a build-time convenience. This
+    rule does not change historical beta.1 reproduction, which continues to
+    use the recovered builder's own historical `PROTOTYPE_ALLOWLIST`
+    unmodified via `verify-beta1-reproduction.py`.

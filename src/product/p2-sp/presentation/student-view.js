@@ -1,7 +1,5 @@
 import { displayValue, qualityFor, presentError } from "./view-state.js";
 
-const STUDENT_ACTIONS = Object.freeze(["open", "start", "stop", "close"]);
-
 export function studentGraphVisibility(deployment) {
   if (deployment?.target !== "device-hosted") return Object.freeze({ voltage: true, current: true });
   if (deployment.displayName === "Voltage") return Object.freeze({ voltage: true, current: false });
@@ -10,16 +8,14 @@ export function studentGraphVisibility(deployment) {
   return Object.freeze({ voltage: false, current: false });
 }
 
-export function studentActionEnabled(state, deployment, action) {
-  if (!STUDENT_ACTIONS.includes(action)) return false;
-  if (state.startPending || state.stopPending) return false;
-  if (state.controlState === "CLOSED") return action === "open";
-  if (state.controlState === "READY") return action === "start" ? deployment.startAllowed : action === "close";
-  return state.controlState === "STREAMING" && action === "stop";
-}
-
-function actionMarkup() {
-  return STUDENT_ACTIONS.map((action) => `<button data-action="${action}" disabled>${action[0].toUpperCase()}${action.slice(1)}</button>`).join("");
+export function studentPrimaryActionState(state, deployment, operation) {
+  if (operation.inFlight) return Object.freeze({ enabled: false, busy: true, label: operation.operationKind === "stop" ? "終了中… / Stopping…" : "開始中… / Starting…" });
+  if (state.startPending) return Object.freeze({ enabled: false, busy: true, label: "開始中… / Starting…" });
+  if (state.stopPending) return Object.freeze({ enabled: false, busy: true, label: "終了中… / Stopping…" });
+  if (state.controlState === "CONNECTED") return Object.freeze({ enabled: false, busy: true, label: "開始中… / Starting…" });
+  if (state.controlState === "STREAMING") return Object.freeze({ enabled: true, busy: false, label: "測定終了 / Stop" });
+  const enabled = (state.controlState === "CLOSED" || state.controlState === "READY") && deployment.startAllowed === true;
+  return Object.freeze({ enabled, busy: false, label: "測定開始 / Start" });
 }
 
 function required(root, selector) {
@@ -32,20 +28,23 @@ export function studentMarkup() {
   return `<section class="student" aria-label="生徒向け測定">
     <header><strong>VAMeter / V-I measurement</strong><span data-live="connection"></span><span data-live="stream"></span></header>
     <p class="deployment" data-live="deployment"></p>
-    <p class="quality" data-live="quality"></p>
-    <div class="values"><output data-live="voltage"></output><output data-live="current"></output></div>
-    <div class="graphs">
+    <div class="primary-action"><button data-student-primary-action disabled>測定開始 / Start</button></div>
+    <div class="values"><output data-value-panel="voltage" data-live="voltage"></output><output data-value-panel="current" data-live="current"></output></div>
+    <div class="graphs" data-student-graphs>
       <section class="graph-panel" data-graph-panel="voltage" aria-label="Voltage graph"><canvas data-waveform="voltage" role="img" aria-label="Voltage graph over device time; gaps are not joined"></canvas></section>
       <section class="graph-panel" data-graph-panel="current" aria-label="Current graph"><canvas data-waveform="current" role="img" aria-label="Current graph over device time; invalid samples are not zero"></canvas></section>
     </div>
+    <p class="quality" data-live="quality"></p>
     <p class="error" data-live="error"></p>
     <p class="error" data-live="action-error"></p>
-    <div class="actions">${actionMarkup()}<span data-live="busy"></span></div>
-    <p>State-appropriate action only; forced Close is never the ordinary Student action.</p>
   </section>`;
 }
 
-export function updateStudentPresentation(root, owner, deployment, actionDiagnostic) {
+function visibleQuality(value) {
+  return value === "stale" ? "停止時の値" : value === "invalid" ? "無効" : value === "no-valid-data" ? "データなし" : "";
+}
+
+export function updateStudentPresentation(root, owner, deployment, actionDiagnostic, primaryController) {
   const state = owner.adapter.summary();
   const error = presentError(state.lastError);
   const quality = qualityFor(owner);
@@ -56,17 +55,21 @@ export function updateStudentPresentation(root, owner, deployment, actionDiagnos
   const deploymentNode = required(root, '[data-live="deployment"]');
   deploymentNode.dataset.deploymentStatus = deployment.bundleStatus;
   deploymentNode.textContent = `配備状態: ${deployment.bundleStatus}; ${deployment.message}`;
-  required(root, '[data-live="quality"]').textContent = `データ品質: ${quality.overall}; 電圧: ${quality.voltage}; 電流: ${quality.current}; gap: ${quality.gap ? "あり" : "なし"}`;
-  required(root, '[data-live="voltage"]').textContent = `Voltage ${displayValue(latest?.voltage_V, "V", quality.voltage)}`;
-  required(root, '[data-live="current"]').textContent = `Current ${displayValue(latest?.current_A, "A", quality.current)}`;
-  required(root, '[data-live="error"]').textContent = `recoverable error: ${error.classification === "recoverable" ? error.code : "none"}; fatal-semantic error: ${error.classification === "fatal-semantic" ? error.code : "none"}`;
-  required(root, '[data-live="action-error"]').textContent = `action rejection: ${actionDiagnostic.count}; last: ${actionDiagnostic.lastAction}`;
-  required(root, '[data-live="busy"]').textContent = `busy / meter-in-use: ${state.startPending ? "yes" : "no"}`;
+  const qualityParts = [visibleQuality(quality.overall), quality.gap ? "欠落あり" : ""].filter(Boolean);
+  required(root, '[data-live="quality"]').textContent = qualityParts.join(" · ");
+  required(root, '[data-live="voltage"]').textContent = `電圧 Voltage ${displayValue(latest?.voltage_V, "V", visibleQuality(quality.voltage))}`.trim();
+  required(root, '[data-live="current"]').textContent = `電流 Current ${displayValue(latest?.current_A, "A", visibleQuality(quality.current))}`.trim();
+  required(root, '[data-live="error"]').textContent = error.classification === "none" ? "" : `測定エラー: ${error.code}`;
+  required(root, '[data-live="action-error"]').textContent = actionDiagnostic.count ? `操作を完了できませんでした (${actionDiagnostic.lastAction})` : "";
+  required(root, '[data-value-panel="voltage"]').hidden = !graphVisibility.voltage;
+  required(root, '[data-value-panel="current"]').hidden = !graphVisibility.current;
   required(root, '[data-graph-panel="voltage"]').hidden = !graphVisibility.voltage;
   required(root, '[data-graph-panel="current"]').hidden = !graphVisibility.current;
-  root.querySelectorAll("[data-action]").forEach((button) => {
-    const enabled = studentActionEnabled(state, deployment, button.dataset.action);
-    button.disabled = !enabled;
-    button.setAttribute("aria-disabled", String(!enabled));
-  });
+  required(root, "[data-student-graphs]").dataset.layout = graphVisibility.voltage && graphVisibility.current ? "both" : "single";
+  const primaryState = studentPrimaryActionState(state, deployment, primaryController.snapshot());
+  const button = required(root, "[data-student-primary-action]");
+  button.textContent = primaryState.label;
+  button.disabled = !primaryState.enabled;
+  button.setAttribute("aria-disabled", String(!primaryState.enabled));
+  button.setAttribute("aria-busy", String(primaryState.busy));
 }

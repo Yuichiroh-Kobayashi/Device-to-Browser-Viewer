@@ -10,9 +10,7 @@ header,.values,.actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items
 .graphs[data-layout="single"] { grid-template-columns: minmax(0, 1fr); }
 .graph-panel { min-width: 0; }
 .graph-panel[hidden] { display: none; }
-.graph-panel canvas { display: block; width: 100%; height: 18rem; --canvas-bg: #101821; --canvas-fg: #dfeaff; --canvas-grid: #405064; --canvas-muted: #9eadbf; --canvas-zero: #8491a5; --canvas-marker: #f6c45d; --canvas-invalid: #d67eff; }
-.graph-panel [data-waveform="voltage"] { --canvas-accent: #0879a8; }
-.graph-panel [data-waveform="current"] { --canvas-accent: #087a49; }
+.graph-panel canvas { display: block; width: 100%; height: 18rem; --graph-background: #101821; --graph-foreground: #dfeaff; --graph-grid: #405064; --graph-zero-boundary: #8491a5; --graph-voltage-accent: #0879a8; --graph-current-accent: #087a49; --graph-gap: #f6c45d; --graph-invalid: #d67eff; --graph-reverse-warning: #d67eff; --graph-muted: #9eadbf; }
 button { min-width: 44px; min-height: 44px; padding: .5rem .9rem; }
 button:focus-visible { outline: 3px solid #045cbb; outline-offset: 2px; }
 .quality,.error,.deployment { border-inline-start: 4px solid #045cbb; padding-inline-start: .5rem; }

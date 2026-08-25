@@ -1,0 +1,110 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  CURRENT_SCALES, GraphPolicyController, VOLTAGE_SCALES, clipLineToRectangle,
+  constructGraphFrame, formatStudentValue, makeTimeDomain, makeXAxisTicks,
+  timePrecision, updateStagedScale,
+} from "../graph/graph-core.js";
+
+const record = (seconds, voltage, current, extra = {}) => Object.freeze({
+  stream_id: 1, sequence: BigInt(seconds + 1), timestamp_us: BigInt(seconds) * 1_000_000n,
+  voltage_V: voltage, current_A: current, segment_id: 1,
+  voltage_segment_id: 1, current_segment_id: 1,
+  flags: Object.freeze({ gap_samples: 0n, discontinuity: false, timebase_reset: false }), ...extra,
+});
+
+test("every staged scale expands at its inclusive eight-division boundary", () => {
+  for (const scales of [VOLTAGE_SCALES, CURRENT_SCALES]) {
+    for (let index = 0; index < scales.length - 1; index += 1) {
+      assert.equal(updateStagedScale(scales, index, [8 * scales[index] * (1 - 1e-12)]).scaleIndex, index);
+      assert.ok(updateStagedScale(scales, index, [8 * scales[index]]).scaleIndex > index);
+    }
+    assert.equal(updateStagedScale(scales, scales.length - 1, [Infinity, 1e20]).scaleIndex, scales.length - 1);
+  }
+});
+
+test("multi-stage expansion, strict one-stage shrink, invalid hold, and negative-only hold", () => {
+  assert.equal(updateStagedScale(VOLTAGE_SCALES, 0, [40]).scaleIndex, VOLTAGE_SCALES.length - 1);
+  assert.deepEqual(updateStagedScale(VOLTAGE_SCALES, 4, [3.9]), { scaleIndex: 3, transition: "shrunk", positivePeak: 3.9 });
+  assert.equal(updateStagedScale(VOLTAGE_SCALES, 4, [4]).scaleIndex, 4);
+  assert.equal(updateStagedScale(CURRENT_SCALES, 8, [-0.2, -0.01]).transition, "held-no-nonnegative");
+  assert.equal(updateStagedScale(CURRENT_SCALES, 8, [null, NaN]).transition, "held-no-valid");
+});
+
+test("device-time domain covers early, exact-window, and sliding acquisition", () => {
+  assert.deepEqual(makeTimeDomain(1_000_000n, 5_000_000n, 10), { minimum: 0, maximum: 10 });
+  assert.deepEqual(makeTimeDomain(1_000_000n, 11_000_000n, 10), { minimum: 0, maximum: 10 });
+  assert.deepEqual(makeTimeDomain(1_000_000n, 13_500_000n, 10), { minimum: 2.5, maximum: 12.5 });
+  assert.equal(timePrecision(10), 1); assert.equal(timePrecision(30), 0); assert.equal(timePrecision(60), 0);
+});
+
+test("responsive ticks are deterministic and fit required viewport widths", () => {
+  for (const width of [1366, 1024, 768]) for (const window of [10, 30, 60]) {
+    const precision = timePrecision(window); const ticks = makeXAxisTicks({ minimum: 0, maximum: window }, precision, width - 98);
+    assert.ok(ticks.length >= 2); assert.ok(ticks.length <= Math.floor((width - 98) / (precision ? 58 : 46)));
+    assert.ok(ticks.every((tick) => tick.label === tick.value.toFixed(precision)));
+  }
+});
+
+test("literal Student unit table boundaries, signs, negative zero, and no post-rounding reselection", () => {
+  assert.equal(formatStudentValue(0, "voltage"), "0.0 µV"); assert.equal(formatStudentValue(-0, "current"), "0.0 µA");
+  assert.equal(formatStudentValue(0.000999, "voltage"), "999.0 µV"); assert.equal(formatStudentValue(0.001, "voltage"), "1.0 mV");
+  assert.equal(formatStudentValue(0.99999, "voltage"), "1000.0 mV"); assert.equal(formatStudentValue(1, "voltage"), "1.00 V");
+  assert.equal(formatStudentValue(-0.000999, "current"), "-999.0 µA"); assert.equal(formatStudentValue(0.001, "current"), "1.0 mA");
+  assert.equal(formatStudentValue(0.99999, "current"), "1000.0 mA"); assert.equal(formatStudentValue(1, "current"), "1.000 A");
+});
+
+test("Liang-Barsky clips both crossing directions without rewriting measurements", () => {
+  const rectangle = { xMin: 0, xMax: 2, yMin: 0, yMax: 1 };
+  const descending = clipLineToRectangle({ x: 0, y: 1 }, { x: 1, y: -1 }, rectangle);
+  const ascending = clipLineToRectangle({ x: 1, y: -1 }, { x: 2, y: 1 }, rectangle);
+  assert.deepEqual(descending.end, { x: 0.5, y: 0 }); assert.equal(descending.clippedEnd, true);
+  assert.deepEqual(ascending.start, { x: 1.5, y: 0 }); assert.equal(ascending.clippedStart, true);
+});
+
+test("positive-negative-positive creates two paths and no fabricated zero run", () => {
+  const records = [record(0, 1, 0.1), record(1, 1, -0.1), record(2, 1, 0.1)];
+  const frame = constructGraphFrame({ records, channel: "current", scale: 0.1, domain: { minimum: 0, maximum: 10 }, originTimestampUs: 0n });
+  assert.equal(frame.measurementState, "valid"); assert.equal(frame.plotState, "visible"); assert.equal(frame.paths.length, 2);
+  assert.deepEqual(frame.paths.map((path) => path.map((point) => point.y)), [[0.1, 0], [0, 0.1]]);
+  assert.deepEqual(records.map((entry) => entry.current_A), [0.1, -0.1, 0.1]);
+});
+
+test("invalid, gap, segment, and channel-segment boundaries break paths", () => {
+  const variants = [
+    [record(0, 1, 0.1), record(1, 1, null), record(2, 1, 0.1)],
+    [record(0, 1, 0.1), record(1, 1, 0.2, { flags: { gap_samples: 1n } })],
+    [record(0, 1, 0.1), record(1, 1, 0.2, { segment_id: 2 })],
+    [record(0, 1, 0.1), record(1, 1, 0.2, { current_segment_id: 2 })],
+  ];
+  for (const records of variants) {
+    const frame = constructGraphFrame({ records, channel: "current", scale: 0.1, domain: { minimum: 0, maximum: 10 }, originTimestampUs: 0n });
+    assert.equal(frame.paths.length, 0);
+  }
+});
+
+test("negative-only stays valid but clipped-out; one isolated valid sample is empty", () => {
+  const negative = constructGraphFrame({ records: [record(0, 1, -0.1), record(1, 1, -0.2)], channel: "current", scale: 0.1, domain: { minimum: 0, maximum: 10 }, originTimestampUs: 0n });
+  assert.equal(negative.measurementState, "valid"); assert.equal(negative.plotState, "clipped-out");
+  assert.deepEqual(negative.reverseObservation, { observedInWindow: true, mostNegative: -0.2 });
+  const isolated = constructGraphFrame({ records: [record(0, 1, 0.1)], channel: "current", scale: 0.1, domain: { minimum: 0, maximum: 10 }, originTimestampUs: 0n });
+  assert.equal(isolated.measurementState, "valid"); assert.equal(isolated.plotState, "empty");
+});
+
+test("controller is presentation-independent and mode/window changes preserve scale state", () => {
+  const controller = new GraphPolicyController({ windowSeconds: 10 }); controller.observeLifecycle({ controlState: "STREAMING", streamId: 1 });
+  const records = [record(0, 1, 0.1), record(1, 4, 0.8)]; const first = controller.update(records);
+  const studentVoltage = first.voltage; const professionalVoltage = first.voltage; assert.strictEqual(studentVoltage, professionalVoltage);
+  const voltageIndex = controller.scaleIndices.voltage; controller.setWindowSeconds(30); const both = controller.update(records);
+  assert.equal(controller.scaleIndices.voltage, voltageIndex); assert.deepEqual(both.voltage.paths, studentVoltage.paths);
+});
+
+test("new STREAMING epoch, TIMEBASE_RESET, and stream change reset graph state while mode does not", () => {
+  const controller = new GraphPolicyController(); controller.observeLifecycle({ controlState: "READY" }); controller.observeLifecycle({ controlState: "STREAMING", streamId: 1 });
+  controller.update([record(0, 40, 0.8), record(1, 40, 0.8)]); assert.ok(controller.scaleIndices.voltage > 0);
+  controller.observeLifecycle({ controlState: "STREAMING", streamId: 1 }); assert.ok(controller.scaleIndices.voltage > 0);
+  assert.equal(controller.observeLifecycle({ controlState: "READY", streamId: 1 }), false);
+  assert.equal(controller.observeLifecycle({ controlState: "STREAMING", streamId: 1 }), true); assert.equal(controller.scaleIndices.voltage, 0); assert.equal(controller.originTimestampUs, null);
+  controller.update([record(0, 40, 0.8), record(1, 40, 0.8)]); assert.equal(controller.observeLifecycle({ controlState: "STREAMING", streamId: 1, timebaseReset: true }), true); assert.equal(controller.scaleIndices.current, 0);
+  controller.update([record(0, 40, 0.8), record(1, 40, 0.8)]); assert.equal(controller.observeLifecycle({ controlState: "STREAMING", streamId: 2 }), true); assert.equal(controller.originTimestampUs, null);
+});

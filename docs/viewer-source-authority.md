@@ -85,8 +85,8 @@ development/validation harness, see the top of [`README.md`](../README.md).
 18. `tools/product-repro/build-current-product.py` builds a new current
     Student+Professional candidate only from a clean committed Viewer HEAD. It
     uses the recovered builder through a disposable adapter that changes only
-    `EXPECTED_ROOT`, `VIEWER_COMMIT`, `D2B_COMMIT`, and (see item 21)
-    `PROTOTYPE_ALLOWLIST`; the tracked historical builder remains
+    `EXPECTED_ROOT`, `VIEWER_COMMIT`, `D2B_COMMIT`, the obsolete graph-source
+    inventory entry, and (see item 21) `PROTOTYPE_ALLOWLIST`; the tracked historical builder remains
     byte-identical. The copied D2B subtree must match the pinned tree OID
     before an evidence root or builder adaptation is created.
 
@@ -117,7 +117,8 @@ development/validation harness, see the top of [`README.md`](../README.md).
     the historical builder's own `PROTOTYPE_ALLOWLIST`, the disposable
     adapter additionally substitutes the disposable copy's
     `PROTOTYPE_ALLOWLIST` block with the current, explicitly reviewed
-    allowlist -- reversing all four disposable substitutions still reproduces
+    allowlist. It also replaces the obsolete graph inventory entry when the
+    approved graph source changes -- reversing all five disposable substitutions still reproduces
     the tracked historical builder byte-for-byte. Extending
     `CURRENT_PRODUCT_ALLOWLIST` to include a new file is a deliberate source
     edit to `build-current-product.py`, not a build-time convenience. This

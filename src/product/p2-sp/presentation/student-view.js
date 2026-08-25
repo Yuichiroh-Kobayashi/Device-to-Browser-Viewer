@@ -1,4 +1,5 @@
-import { displayValue, qualityFor, presentError } from "./view-state.js";
+import { qualityFor, presentError } from "./view-state.js";
+import { formatStudentValue } from "../graph/graph-core.js";
 
 export function studentGraphVisibility(deployment) {
   if (deployment?.target !== "device-hosted") return Object.freeze({ voltage: true, current: true });
@@ -57,8 +58,9 @@ export function updateStudentPresentation(root, owner, deployment, actionDiagnos
   deploymentNode.textContent = `配備状態: ${deployment.bundleStatus}; ${deployment.message}`;
   const qualityParts = [visibleQuality(quality.overall), quality.gap ? "欠落あり" : ""].filter(Boolean);
   required(root, '[data-live="quality"]').textContent = qualityParts.join(" · ");
-  required(root, '[data-live="voltage"]').textContent = `電圧 Voltage ${displayValue(latest?.voltage_V, "V", visibleQuality(quality.voltage))}`.trim();
-  required(root, '[data-live="current"]').textContent = `電流 Current ${displayValue(latest?.current_A, "A", visibleQuality(quality.current))}`.trim();
+  const voltageState = visibleQuality(quality.voltage); const currentState = visibleQuality(quality.current);
+  required(root, '[data-live="voltage"]').textContent = `電圧 Voltage ${formatStudentValue(latest?.voltage_V, "voltage")}${voltageState ? ` (${voltageState})` : ""}`.trim();
+  required(root, '[data-live="current"]').textContent = `電流 Current ${formatStudentValue(latest?.current_A, "current")}${currentState ? ` (${currentState})` : ""}`.trim();
   required(root, '[data-live="error"]').textContent = error.classification === "none" ? "" : `測定エラー: ${error.code}`;
   required(root, '[data-live="action-error"]').textContent = actionDiagnostic.count ? `操作を完了できませんでした (${actionDiagnostic.lastAction})` : "";
   required(root, '[data-value-panel="voltage"]').hidden = !graphVisibility.voltage;

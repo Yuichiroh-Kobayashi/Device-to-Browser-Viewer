@@ -3,7 +3,8 @@ import { createAnimationFrameQueue, createBoundedActionDiagnostics, createPresen
 import { studentMarkup, updateStudentPresentation } from "./presentation/student-view.js";
 import { professionalMarkup, updateProfessionalPresentation } from "./presentation/professional-view.js";
 import { assessDeployment, bootstrapDeviceHosted } from "./presentation/deployment-context.js";
-import { WaveformCanvas } from "../source-export/viewer/src/render/waveform-canvas.js";
+import { GraphPolicyController } from "./graph/graph-core.js";
+import { GraphWaveformCanvas } from "./graph/waveform-canvas.js";
 import { StudentPrimaryActionController } from "./student-primary-action-controller.js";
 
 const BUILD_INCLUDE_PROFESSIONAL = typeof __INCLUDE_PROFESSIONAL__ === "undefined" ? true : __INCLUDE_PROFESSIONAL__;
@@ -42,16 +43,19 @@ export function createViewerApplication({
     : assessDeployment({ target: "external-development", explicitDeveloperConfiguration: true });
   const actionDiagnostics = createBoundedActionDiagnostics();
   const studentPrimaryAction = new StudentPrimaryActionController(owner);
+  const graphPolicy = new GraphPolicyController({ windowSeconds: owner.model.displayWindowSeconds });
   let controller;
   let presentation;
   let waveforms = null;
+  let lastLifecycleRecord = null;
   let destroyed = false;
   const waveformRender = createAnimationFrameQueue(animationScheduler, () => {
     if (!waveforms) return;
     const records = owner.model.recordSnapshot();
     const markers = owner.model.markerSnapshot();
-    waveforms.voltage.draw(records, markers);
-    waveforms.current.draw(records, markers);
+    const frames = graphPolicy.update(records);
+    if (!waveforms.voltage.canvas.closest("[data-graph-panel]")?.hidden) waveforms.voltage.draw(frames.voltage, markers, frames.precision);
+    if (!waveforms.current.canvas.closest("[data-graph-panel]")?.hidden) waveforms.current.draw(frames.current, markers, frames.precision);
   });
 
   function destroyWaveforms() {
@@ -67,8 +71,8 @@ export function createViewerApplication({
     if (!voltageCanvas || !currentCanvas) throw new Error("waveform canvas nodes are missing");
     const onResize = () => waveformRender.request();
     waveforms = Object.freeze({
-      voltage: new WaveformCanvas(voltageCanvas, { channel: "voltage", unit: "V", title: "Voltage", onResize }),
-      current: new WaveformCanvas(currentCanvas, { channel: "current", unit: "A", title: "Current", onResize }),
+      voltage: new GraphWaveformCanvas(voltageCanvas, { channel: "voltage", unit: "V", title: "Voltage", onResize }),
+      current: new GraphWaveformCanvas(currentCanvas, { channel: "current", unit: "A", title: "Current", onResize }),
     });
   }
 
@@ -99,6 +103,7 @@ export function createViewerApplication({
     displayWindow.onchange = () => {
       try {
         setDisplayWindowSeconds(owner, displayWindow.value);
+        graphPolicy.setWindowSeconds(owner.model.displayWindowSeconds);
         waveformRender.request();
       } catch {
         displayWindow.value = String(owner.model.displayWindowSeconds);
@@ -122,7 +127,14 @@ export function createViewerApplication({
 
   presentation = createPresentationCoordinator({ mount, update });
   controller = new ModeController(owner, { deployment, render: (mode) => presentation.setMode(mode) });
-  const unsubscribe = owner.subscribe(() => presentation.update());
+  const observeGraphLifecycle = () => {
+    const state = owner.adapter.summary(); const latest = owner.model.latest;
+    const newRecord = latest !== null && latest !== lastLifecycleRecord;
+    graphPolicy.observeLifecycle({ controlState: state.controlState, streamId: state.streamId, timebaseReset: newRecord && Boolean(latest.flags?.timebase_reset) });
+    lastLifecycleRecord = latest;
+  };
+  observeGraphLifecycle();
+  const unsubscribe = owner.subscribe(() => { observeGraphLifecycle(); presentation.update(); });
   controller.setMode("student");
   if (deploymentTarget === "device-hosted") {
     const configuredWsAuthority = `${pageLocation.protocol === "https:" ? "wss:" : "ws:"}//${pageLocation.host}/d2b/v0/stream`;
@@ -136,6 +148,7 @@ export function createViewerApplication({
     controller,
     presentation,
     actionDiagnostics,
+    graphPolicy,
     destroy() {
       if (destroyed) return;
       destroyed = true;

@@ -43,10 +43,11 @@ CURRENT_PRODUCT_ALLOWLIST = frozenset({
     "presentation/view-state.js",
     "presentation/deployment-context.js",
     "presentation/professional-view.js",
-    "graph/autoscale-policy.js",
+    "graph/graph-core.js",
+    "graph/waveform-canvas.js",
     "tests/one-runtime.test.mjs",
     "tests/lifecycle-ui.test.mjs",
-    "tests/autoscale-policy.test.mjs",
+    "tests/graph-core.test.mjs",
     "tests/deployment-context.test.mjs",
     "tests/responsive-static.test.mjs",
     "tests/student-presentation.test.mjs",
@@ -250,6 +251,7 @@ def adapt_builder(
         "VIEWER_COMMIT": f'VIEWER_COMMIT = "{viewer_head}"',
         "D2B_COMMIT": f'D2B_COMMIT = "{D2B_AUTHORITY_COMMIT}"',
         "PROTOTYPE_ALLOWLIST": prototype_allowlist_literal(CURRENT_PRODUCT_ALLOWLIST),
+        "GRAPH_SOURCE": '    "graph/graph-core.js", "graph/waveform-canvas.js",',
     }
     patterns = {
         "EXPECTED_ROOT": re.compile(r"^EXPECTED_ROOT = Path\([^\r\n]+\)$", re.MULTILINE),
@@ -262,10 +264,11 @@ def adapt_builder(
             r"^PROTOTYPE_ALLOWLIST = frozenset\(P1_PROFESSIONAL \+ \($\n(?:^.*$\n)*?^\)\)$",
             re.MULTILINE,
         ),
+        "GRAPH_SOURCE": re.compile(r'^    "graph/autoscale-policy\.js",$', re.MULTILINE),
     }
     adapted = source
     original_blocks: dict[str, str] = {}
-    for name in ("EXPECTED_ROOT", "VIEWER_COMMIT", "D2B_COMMIT", "PROTOTYPE_ALLOWLIST"):
+    for name in ("EXPECTED_ROOT", "VIEWER_COMMIT", "D2B_COMMIT", "PROTOTYPE_ALLOWLIST", "GRAPH_SOURCE"):
         matches = list(patterns[name].finditer(adapted))
         if len(matches) != 1:
             raise CurrentBuildError(f"recovered builder {name} occurrence count mismatch")
@@ -276,10 +279,10 @@ def adapt_builder(
             + adapted[matches[0].end() :]
         )
     restored = adapted
-    for name in ("EXPECTED_ROOT", "VIEWER_COMMIT", "D2B_COMMIT", "PROTOTYPE_ALLOWLIST"):
+    for name in ("EXPECTED_ROOT", "VIEWER_COMMIT", "D2B_COMMIT", "PROTOTYPE_ALLOWLIST", "GRAPH_SOURCE"):
         restored = restored.replace(replacements[name], original_blocks[name], 1)
     if restored.encode("utf-8") != original:
-        raise CurrentBuildError("disposable builder adapter changed more than the four approved regions")
+        raise CurrentBuildError("disposable builder adapter changed more than the five approved regions")
 
     diff = "".join(
         difflib.unified_diff(
@@ -438,6 +441,7 @@ def main() -> int:
                 "VIEWER_COMMIT",
                 "D2B_COMMIT",
                 "PROTOTYPE_ALLOWLIST",
+                "GRAPH_SOURCE",
             ],
             "builder_adapter_diff_sha256": sha256(builder_diff.encode("utf-8")),
             "current_product_allowlist": sorted(CURRENT_PRODUCT_ALLOWLIST),

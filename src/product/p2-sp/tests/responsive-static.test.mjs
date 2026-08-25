@@ -45,7 +45,7 @@ assert.match(app, /await studentPrimaryAction\.activate\(deployment\);/);
 assert.match(app, /actionDiagnostics\.record\(studentPrimaryAction\.snapshot\(\)\.lastAttemptedOperation\)/);
 assert.match(app, /catch\s*\{[\s\S]*actionDiagnostics\.record\([\s\S]*\}\s*finally\s*\{\s*presentation\.update\(\);/);
 assert.match(app, /studentPrimaryAction\.dispose\(\)/);
-assert.match(app, /owner\.subscribe\(\(\) => presentation\.update\(\)\)/);
+assert.match(app, /owner\.subscribe\(\(\) => \{ observeGraphLifecycle\(\); presentation\.update\(\); \}\)/);
 assert.doesNotMatch(app, /owner\.subscribe\(\(\) => controller\.setMode/);
 assert.doesNotMatch(app, /pointerdown|mousedown|touchstart|debounce|retry/i);
 assert.doesNotMatch(student, /quadraticCurveTo|bezierCurveTo|spline|Catmull|interpolat/i);

@@ -4,9 +4,9 @@ export function qualityFor(owner) {
   const gap = Boolean(record.flags?.gap_samples > 0n || record.flags?.discontinuity);
   const stale = owner.adapter.summary().controlState !== "STREAMING";
   return Object.freeze({
-    overall: stale ? "stale" : gap ? "gap" : "current",
-    voltage: record.voltage_V === null ? "invalid" : stale ? "stale" : "current",
-    current: record.current_A === null ? "invalid" : stale ? "stale" : "current",
+    overall: stale ? "stale" : gap ? "gap" : "normal",
+    voltage: record.voltage_V === null ? "invalid" : stale ? "stale" : "normal",
+    current: record.current_A === null ? "invalid" : stale ? "stale" : "normal",
     gap,
   });
 }

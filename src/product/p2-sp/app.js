@@ -113,6 +113,7 @@ export function createViewerApplication({
           await studentPrimaryAction.activate(deployment);
         } catch {
           actionDiagnostics.record(studentPrimaryAction.snapshot().lastAttemptedOperation);
+        } finally {
           presentation.update();
         }
       };

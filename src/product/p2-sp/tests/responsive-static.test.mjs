@@ -43,6 +43,7 @@ assert.equal(studentPrimaryActionState(state("STREAMING"), openDeployment, { inF
 assert.equal(studentPrimaryActionState(state("READY"), openDeployment, { inFlight: true, operationKind: "start" }).label, "開始中… / Starting…");
 assert.match(app, /await studentPrimaryAction\.activate\(deployment\);/);
 assert.match(app, /actionDiagnostics\.record\(studentPrimaryAction\.snapshot\(\)\.lastAttemptedOperation\)/);
+assert.match(app, /catch\s*\{[\s\S]*actionDiagnostics\.record\([\s\S]*\}\s*finally\s*\{\s*presentation\.update\(\);/);
 assert.match(app, /studentPrimaryAction\.dispose\(\)/);
 assert.match(app, /owner\.subscribe\(\(\) => presentation\.update\(\)\)/);
 assert.doesNotMatch(app, /owner\.subscribe\(\(\) => controller\.setMode/);

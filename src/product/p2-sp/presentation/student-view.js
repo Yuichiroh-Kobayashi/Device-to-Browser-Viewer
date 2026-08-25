@@ -12,6 +12,7 @@ export function studentPrimaryActionState(state, deployment, operation) {
   if (operation.inFlight) return Object.freeze({ enabled: false, busy: true, label: operation.operationKind === "stop" ? "終了中… / Stopping…" : "開始中… / Starting…" });
   if (state.startPending) return Object.freeze({ enabled: false, busy: true, label: "開始中… / Starting…" });
   if (state.stopPending) return Object.freeze({ enabled: false, busy: true, label: "終了中… / Stopping…" });
+  if (state.controlState === "CONNECTED") return Object.freeze({ enabled: false, busy: true, label: "開始中… / Starting…" });
   if (state.controlState === "STREAMING") return Object.freeze({ enabled: true, busy: false, label: "測定終了 / Stop" });
   const enabled = (state.controlState === "CLOSED" || state.controlState === "READY") && deployment.startAllowed === true;
   return Object.freeze({ enabled, busy: false, label: "測定開始 / Start" });

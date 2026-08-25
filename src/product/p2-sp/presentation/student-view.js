@@ -1,4 +1,4 @@
-import { qualityFor, presentError } from "./view-state.js";
+import { qualityFor, presentError, runtimeValueState } from "./view-state.js";
 import { formatStudentValue } from "../graph/graph-core.js";
 
 export function studentGraphVisibility(deployment) {
@@ -58,7 +58,8 @@ export function updateStudentPresentation(root, owner, deployment, actionDiagnos
   deploymentNode.textContent = `配備状態: ${deployment.bundleStatus}; ${deployment.message}`;
   const qualityParts = [visibleQuality(quality.overall), quality.gap ? "欠落あり" : ""].filter(Boolean);
   required(root, '[data-live="quality"]').textContent = qualityParts.join(" · ");
-  const voltageState = visibleQuality(quality.voltage); const currentState = visibleQuality(quality.current);
+  const stoppedState = runtimeValueState(owner);
+  const voltageState = [visibleQuality(quality.voltage), stoppedState].filter(Boolean).join(" · "); const currentState = [visibleQuality(quality.current), stoppedState].filter(Boolean).join(" · ");
   required(root, '[data-live="voltage"]').textContent = `電圧 Voltage ${formatStudentValue(latest?.voltage_V, "voltage")}${voltageState ? ` (${voltageState})` : ""}`.trim();
   required(root, '[data-live="current"]').textContent = `電流 Current ${formatStudentValue(latest?.current_A, "current")}${currentState ? ` (${currentState})` : ""}`.trim();
   required(root, '[data-live="error"]').textContent = error.classification === "none" ? "" : `測定エラー: ${error.code}`;

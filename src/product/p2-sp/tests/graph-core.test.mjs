@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CURRENT_SCALES, GraphPolicyController, VOLTAGE_SCALES, clipLineToRectangle,
-  constructGraphFrame, formatStudentValue, makeTimeDomain, makeXAxisTicks,
+  constructGraphFrame, formatScaleReadout, formatStudentValue, formatYAxisTick, makeTimeDomain, makeXAxisTicks,
   timePrecision, updateStagedScale,
 } from "../graph/graph-core.js";
+import { formatMarkerLabel } from "../graph/waveform-canvas.js";
+import { qualityFor, runtimeValueState } from "../presentation/view-state.js";
 
 const record = (seconds, voltage, current, extra = {}) => Object.freeze({
   stream_id: 1, sequence: BigInt(seconds + 1), timestamp_us: BigInt(seconds) * 1_000_000n,
@@ -107,4 +109,38 @@ test("new STREAMING epoch, TIMEBASE_RESET, and stream change reset graph state w
   assert.equal(controller.observeLifecycle({ controlState: "STREAMING", streamId: 1 }), true); assert.equal(controller.scaleIndices.voltage, 0); assert.equal(controller.originTimestampUs, null);
   controller.update([record(0, 40, 0.8), record(1, 40, 0.8)]); assert.equal(controller.observeLifecycle({ controlState: "STREAMING", streamId: 1, timebaseReset: true }), true); assert.equal(controller.scaleIndices.current, 0);
   controller.update([record(0, 40, 0.8), record(1, 40, 0.8)]); assert.equal(controller.observeLifecycle({ controlState: "STREAMING", streamId: 2 }), true); assert.equal(controller.originTimestampUs, null);
+});
+
+test("scale evaluation occurs once per authoritative identity, never per repaint", () => {
+  const controller = new GraphPolicyController({ windowSeconds: 10 }); controller.observeLifecycle({ controlState: "STREAMING", streamId: 1 });
+  controller.update([record(0, 40, 0.8), record(1, 40, 0.8)]); const expanded = controller.scaleIndices.voltage;
+  const low = [record(2, 0.1, 0.0001), record(3, 0.1, 0.0001)]; controller.update(low); const afterMeasurement = controller.scaleIndices.voltage;
+  assert.equal(afterMeasurement, expanded - 1);
+  controller.update(low); assert.equal(controller.scaleIndices.voltage, afterMeasurement, "presentation repaint preserves scale");
+  controller.update(low); assert.equal(controller.scaleIndices.voltage, afterMeasurement, "mode-switch repaint preserves scale");
+  controller.update(low); assert.equal(controller.scaleIndices.voltage, afterMeasurement, "resize repaint preserves scale");
+  const next = [...low, record(4, 0.1, 0.0001)]; controller.update(next); assert.equal(controller.scaleIndices.voltage, afterMeasurement - 1, "new sequence permits one shrink");
+  controller.setWindowSeconds(30); const beforeWindow = controller.scaleIndices.voltage; controller.update(next); assert.equal(controller.scaleIndices.voltage, beforeWindow - 1, "window change recalculates once");
+  controller.update(next); assert.equal(controller.scaleIndices.voltage, beforeWindow - 1, "window repaint cannot shrink again");
+});
+
+test("invalid annotation is timestamp-only, breaks the path, and does not affect scale", () => {
+  const records = [record(0, 1, 0.1), record(1, null, 0.1), record(2, 1, 0.1)];
+  const frame = constructGraphFrame({ records, channel: "voltage", scale: 0.5, domain: { minimum: 0, maximum: 10 }, originTimestampUs: 0n });
+  assert.deepEqual(frame.invalid, [{ seconds: 1 }]); assert.equal("y" in frame.invalid[0], false); assert.equal(frame.paths.length, 0);
+  assert.equal(updateStagedScale(VOLTAGE_SCALES, 1, records.map((entry) => entry.voltage_V)).positivePeak, 1);
+});
+
+test("engineering Y-axis labels, staged readouts, and bounded marker causes are preserved", () => {
+  assert.equal(formatScaleReadout(0.5, "voltage"), "0.5V/div"); assert.equal(formatScaleReadout(0.01, "current"), "10mA/div"); assert.equal(formatScaleReadout(0.0001, "current"), "100µA/div");
+  assert.equal(formatYAxisTick(0, "current", 0.01), "0 A"); assert.equal(formatYAxisTick(0.09, "current", 0.01), "90 mA"); assert.equal(formatYAxisTick(0.0002, "current", 0.0001), "200 µA"); assert.equal(formatYAxisTick(1, "voltage", 0.5), "1.0 V");
+  for (const [cause, text] of [["producerOverflow", "producer overflow"], ["outputQueueDrop", "output drop"], ["sourcePaused", "source paused"], ["timebaseReset", "timebase reset"]]) {
+    const label = formatMarkerLabel({ kind: "sequence-gap", gap_samples: 3n, causes: { [cause]: true } }); assert.match(label, new RegExp(text)); assert.ok(label.length <= 56);
+  }
+});
+
+test("data quality remains independent from runtime lifecycle", () => {
+  const latest = record(0, 1, 0.1); const owner = { model: { latest }, adapter: { summary: () => ({ controlState: "READY" }) } };
+  assert.deepEqual(qualityFor(owner), { overall: "normal", voltage: "normal", current: "normal", gap: false }); assert.equal(runtimeValueState(owner), "停止時の値");
+  owner.adapter.summary = () => ({ controlState: "STREAMING" }); assert.deepEqual(qualityFor(owner), { overall: "normal", voltage: "normal", current: "normal", gap: false }); assert.equal(runtimeValueState(owner), "");
 });

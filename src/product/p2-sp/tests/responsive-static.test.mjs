@@ -46,6 +46,9 @@ assert.match(app, /actionDiagnostics\.record\(studentPrimaryAction\.snapshot\(\)
 assert.match(app, /catch\s*\{[\s\S]*actionDiagnostics\.record\([\s\S]*\}\s*finally\s*\{\s*presentation\.update\(\);/);
 assert.match(app, /studentPrimaryAction\.dispose\(\)/);
 assert.match(app, /owner\.subscribe\(\(\) => \{ observeGraphLifecycle\(\); presentation\.update\(\); \}\)/);
+const graphRenderer = readFileSync(new URL("../graph/waveform-canvas.js", import.meta.url), "utf8");
+assert.match(graphRenderer, /strokeStyle = style\(this\.canvas, "grid"[\s\S]+strokeStyle = style\(this\.canvas, "zero-boundary"[\s\S]+strokeStyle = style\(this\.canvas, "grid"/);
+assert.match(graphRenderer, /fillStyle = style\(this\.canvas, "invalid"/);
 assert.doesNotMatch(app, /owner\.subscribe\(\(\) => controller\.setMode/);
 assert.doesNotMatch(app, /pointerdown|mousedown|touchstart|debounce|retry/i);
 assert.doesNotMatch(student, /quadraticCurveTo|bezierCurveTo|spline|Catmull|interpolat/i);

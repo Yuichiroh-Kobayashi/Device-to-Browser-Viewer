@@ -73,6 +73,27 @@ export function formatStudentValue(value, channel) {
   return `${normalizedFixed(value * 1e6, 1)} µA`;
 }
 
+function engineeringPresentation(value, channel, scale, compact) {
+  const space = compact ? "" : " ";
+  if (value === 0) return channel === "voltage" ? `0${space}V` : `0${space}A`;
+  if (channel === "voltage") {
+    const digits = scale < 1 ? 1 : 0;
+    return `${normalizedFixed(value, digits)}${space}V`;
+  }
+  const magnitude = Math.abs(scale);
+  if (magnitude >= 1) return `${normalizedFixed(value, 0)}${space}A`;
+  if (magnitude >= 0.001) return `${normalizedFixed(value * 1e3, 0)}${space}mA`;
+  return `${normalizedFixed(value * 1e6, 0)}${space}µA`;
+}
+
+export function formatYAxisTick(value, channel, scale) {
+  return engineeringPresentation(value, channel, scale, false);
+}
+
+export function formatScaleReadout(scale, channel) {
+  return `${engineeringPresentation(scale, channel, scale, true)}/div`;
+}
+
 // Liang-Barsky clipping. Returned endpoints retain whether clipping created them.
 export function clipLineToRectangle(a, b, rectangle) {
   const dx = b.x - a.x; const dy = b.y - a.y;
@@ -95,13 +116,15 @@ function sameRun(left, right, channel) {
 
 export function constructGraphFrame({ records, channel, scale, domain, originTimestampUs }) {
   const valid = [];
+  const invalid = [];
   let observedInWindow = false; let mostNegative = null;
   for (let sourceIndex = 0; sourceIndex < records.length; sourceIndex += 1) {
     const record = records[sourceIndex];
     const value = finiteValue(record, channel);
-    if (value === null || typeof record.timestamp_us !== "bigint" || typeof originTimestampUs !== "bigint") continue;
+    if (typeof record.timestamp_us !== "bigint" || typeof originTimestampUs !== "bigint") continue;
     const x = Number(record.timestamp_us - originTimestampUs) / 1e6;
     if (x < domain.minimum || x > domain.maximum) continue;
+    if (value === null) { invalid.push(Object.freeze({ seconds: x })); continue; }
     valid.push({ record, sourceIndex, x, y: value });
     if (channel === "current" && value < 0) { observedInWindow = true; mostNegative = mostNegative === null ? value : Math.min(mostNegative, value); }
   }
@@ -126,13 +149,14 @@ export function constructGraphFrame({ records, channel, scale, domain, originTim
     measurementState: valid.length ? "valid" : "no-valid-data",
     plotState: frozenPaths.length ? "visible" : valid.length && valid.some((entry) => entry.y < 0 || entry.y > rectangle.yMax) ? "clipped-out" : "empty",
     paths: frozenPaths,
+    invalid: Object.freeze(invalid),
     reverseObservation: Object.freeze({ observedInWindow, mostNegative }),
   });
 }
 
 export class GraphPolicyController {
-  constructor({ windowSeconds = 60 } = {}) { this.windowSeconds = windowSeconds; this.reset(); }
-  reset() { this.scaleIndices = { voltage: 0, current: 0 }; this.originTimestampUs = null; this.streamId = null; this.previousControlState = null; this.reverseObservation = { observedInWindow: false, mostNegative: null }; }
+  constructor({ windowSeconds = 60 } = {}) { this.windowSeconds = windowSeconds; this.epochGeneration = 0; this.previousControlState = null; this.reset(); }
+  reset() { this.scaleIndices = { voltage: 0, current: 0 }; this.originTimestampUs = null; this.streamId = null; this.reverseObservation = { observedInWindow: false, mostNegative: null }; this.epochGeneration += 1; this.scaleEvaluationIdentity = null; }
   observeLifecycle({ controlState, streamId = null, timebaseReset = false } = {}) {
     const enteredStreaming = this.previousControlState !== "STREAMING" && controlState === "STREAMING";
     const streamChanged = streamId !== null && this.streamId !== null && streamId !== this.streamId;
@@ -141,7 +165,7 @@ export class GraphPolicyController {
     if (streamId !== null) this.streamId = streamId;
     return enteredStreaming || timebaseReset || streamChanged;
   }
-  setWindowSeconds(value) { if (!DISPLAY_WINDOWS.includes(value)) throw new RangeError("window must be 10, 30, or 60 seconds"); this.windowSeconds = value; }
+  setWindowSeconds(value) { if (!DISPLAY_WINDOWS.includes(value)) throw new RangeError("window must be 10, 30, or 60 seconds"); if (this.windowSeconds !== value) { this.windowSeconds = value; this.scaleEvaluationIdentity = null; } }
   update(records) {
     const timestamped = records.filter((record) => typeof record.timestamp_us === "bigint");
     if (this.originTimestampUs === null && timestamped.length) this.originTimestampUs = timestamped[0].timestamp_us;
@@ -151,10 +175,15 @@ export class GraphPolicyController {
       const x = Number(record.timestamp_us - this.originTimestampUs) / 1e6;
       return x >= domain.minimum && x <= domain.maximum;
     });
-    for (const channel of ["voltage", "current"]) {
-      const scales = channel === "voltage" ? VOLTAGE_SCALES : CURRENT_SCALES;
-      const update = updateStagedScale(scales, this.scaleIndices[channel], active.map((record) => finiteValue(record, channel)));
-      this.scaleIndices[channel] = update.scaleIndex;
+    const last = timestamped.at(-1);
+    const evaluationIdentity = `${this.epochGeneration}:${this.windowSeconds}:${last?.stream_id ?? "none"}:${last?.sequence?.toString() ?? "none"}`;
+    if (evaluationIdentity !== this.scaleEvaluationIdentity) {
+      for (const channel of ["voltage", "current"]) {
+        const scales = channel === "voltage" ? VOLTAGE_SCALES : CURRENT_SCALES;
+        const scaleUpdate = updateStagedScale(scales, this.scaleIndices[channel], active.map((record) => finiteValue(record, channel)));
+        this.scaleIndices[channel] = scaleUpdate.scaleIndex;
+      }
+      this.scaleEvaluationIdentity = evaluationIdentity;
     }
     const voltage = constructGraphFrame({ records: active, channel: "voltage", scale: VOLTAGE_SCALES[this.scaleIndices.voltage], domain, originTimestampUs: this.originTimestampUs });
     const current = constructGraphFrame({ records: active, channel: "current", scale: CURRENT_SCALES[this.scaleIndices.current], domain, originTimestampUs: this.originTimestampUs });

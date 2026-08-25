@@ -124,6 +124,20 @@ test("scale evaluation occurs once per authoritative identity, never per repaint
   controller.update(next); assert.equal(controller.scaleIndices.voltage, beforeWindow - 1, "window repaint cannot shrink again");
 });
 
+test("channel-specific valid identities preserve the invalid channel scale", () => {
+  const controller = new GraphPolicyController({ windowSeconds: 10 }); controller.observeLifecycle({ controlState: "STREAMING", streamId: 1 });
+  controller.update([record(0, 40, 0.8), record(1, 40, 0.8)]);
+  const low = [record(2, 0.1, 0.0001), record(3, 0.1, 0.0001)]; controller.update(low);
+  const beforeVoltageOnly = { ...controller.scaleIndices }; const currentIdentity = controller.scaleEvaluationIdentity.current;
+  const voltageOnly = [...low, record(4, 0.1, null)]; controller.update(voltageOnly);
+  assert.equal(controller.scaleIndices.voltage, beforeVoltageOnly.voltage - 1); assert.equal(controller.scaleIndices.current, beforeVoltageOnly.current); assert.equal(controller.scaleEvaluationIdentity.current, currentIdentity);
+  const beforeCurrentOnly = { ...controller.scaleIndices }; const voltageIdentity = controller.scaleEvaluationIdentity.voltage;
+  const currentOnly = [...voltageOnly, record(5, null, 0.0001)]; controller.update(currentOnly);
+  assert.equal(controller.scaleIndices.current, beforeCurrentOnly.current - 1); assert.equal(controller.scaleIndices.voltage, beforeCurrentOnly.voltage); assert.equal(controller.scaleEvaluationIdentity.voltage, voltageIdentity);
+  const beforeInvalid = { ...controller.scaleIndices }; const invalidOnly = [...currentOnly, record(6, null, null), record(7, null, null)]; controller.update(invalidOnly); controller.update(invalidOnly);
+  assert.deepEqual(controller.scaleIndices, beforeInvalid);
+});
+
 test("invalid annotation is timestamp-only, breaks the path, and does not affect scale", () => {
   const records = [record(0, 1, 0.1), record(1, null, 0.1), record(2, 1, 0.1)];
   const frame = constructGraphFrame({ records, channel: "voltage", scale: 0.5, domain: { minimum: 0, maximum: 10 }, originTimestampUs: 0n });
@@ -134,6 +148,8 @@ test("invalid annotation is timestamp-only, breaks the path, and does not affect
 test("engineering Y-axis labels, staged readouts, and bounded marker causes are preserved", () => {
   assert.equal(formatScaleReadout(0.5, "voltage"), "0.5V/div"); assert.equal(formatScaleReadout(0.01, "current"), "10mA/div"); assert.equal(formatScaleReadout(0.0001, "current"), "100µA/div");
   assert.equal(formatYAxisTick(0, "current", 0.01), "0 A"); assert.equal(formatYAxisTick(0.09, "current", 0.01), "90 mA"); assert.equal(formatYAxisTick(0.0002, "current", 0.0001), "200 µA"); assert.equal(formatYAxisTick(1, "voltage", 0.5), "1.0 V");
+  assert.deepEqual(CURRENT_SCALES.map((scale) => formatScaleReadout(scale, "current")), ["100µA/div", "200µA/div", "500µA/div", "1mA/div", "2mA/div", "5mA/div", "10mA/div", "20mA/div", "50mA/div", "100mA/div", "0.2A/div", "0.5A/div", "1.0A/div"]);
+  assert.equal(formatYAxisTick(1.8, "current", 0.2), "1.8 A"); assert.equal(formatYAxisTick(4.5, "current", 0.5), "4.5 A"); assert.equal(formatYAxisTick(9, "current", 1), "9.0 A");
   for (const [cause, text] of [["producerOverflow", "producer overflow"], ["outputQueueDrop", "output drop"], ["sourcePaused", "source paused"], ["timebaseReset", "timebase reset"]]) {
     const label = formatMarkerLabel({ kind: "sequence-gap", gap_samples: 3n, causes: { [cause]: true } }); assert.match(label, new RegExp(text)); assert.ok(label.length <= 56);
   }

@@ -9,6 +9,15 @@ export function studentGraphVisibility(deployment) {
   return Object.freeze({ voltage: false, current: false });
 }
 
+export function studentAggregateQuality(quality, visibility) {
+  const visible = [visibility.voltage ? quality.voltage : null, visibility.current ? quality.current : null].filter(Boolean);
+  if (!visible.length || visible.every((value) => value === "no-valid-data")) return "no-valid-data";
+  if (visible.includes("invalid")) return "invalid";
+  if (visible.includes("no-valid-data")) return "no-valid-data";
+  if (visible.includes("gap")) return "gap";
+  return "normal";
+}
+
 export function studentPrimaryActionState(state, deployment, operation) {
   if (operation.inFlight) return Object.freeze({ enabled: false, busy: true, label: operation.operationKind === "stop" ? "終了中… / Stopping…" : "開始中… / Starting…" });
   if (state.startPending) return Object.freeze({ enabled: false, busy: true, label: "開始中… / Starting…" });
@@ -56,7 +65,7 @@ export function updateStudentPresentation(root, owner, deployment, actionDiagnos
   const deploymentNode = required(root, '[data-live="deployment"]');
   deploymentNode.dataset.deploymentStatus = deployment.bundleStatus;
   deploymentNode.textContent = `配備状態: ${deployment.bundleStatus}; ${deployment.message}`;
-  const qualityParts = [visibleQuality(quality.overall), quality.gap ? "欠落あり" : ""].filter(Boolean);
+  const qualityParts = [visibleQuality(studentAggregateQuality(quality, graphVisibility)), quality.gap ? "欠落あり" : ""].filter(Boolean);
   required(root, '[data-live="quality"]').textContent = qualityParts.join(" · ");
   const stoppedState = runtimeValueState(owner);
   const voltageState = [visibleQuality(quality.voltage), stoppedState].filter(Boolean).join(" · "); const currentState = [visibleQuality(quality.current), stoppedState].filter(Boolean).join(" · ");

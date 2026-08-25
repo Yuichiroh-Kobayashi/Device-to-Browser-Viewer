@@ -29,9 +29,11 @@ function presentationFixture() {
   const diagnostic = { count: 0, lastAction: "none" };
   const render = () => updateStudentPresentation(root, owner, deployment, diagnostic, primaryController);
   return {
-    button: nodes.get("[data-student-primary-action]"), render,
+    button: nodes.get("[data-student-primary-action]"), quality: nodes.get('[data-live="quality"]'), render,
     setState(controlState, pending = {}) { state = { controlState, streamId: null, startPending: false, stopPending: false, lastError: null, ...pending }; },
     setOperation(inFlight, operationKind = null) { operation = { inFlight, operationKind }; },
+    setLatest(latest) { owner.model.latest = latest; },
+    setDisplayName(displayName) { deployment.displayName = displayName; },
   };
 }
 
@@ -82,4 +84,12 @@ test("CONNECTED without a controller callback still presents disabled busy Start
   view.setOperation(false);
   view.render();
   assertButton(view.button, { label: "開始中… / Starting…", disabled: true, busy: true });
+});
+
+test("Student aggregate quality ignores invalid hidden channels and includes invalid visible channels", () => {
+  const flags = { gap_samples: 0n, discontinuity: false };
+  const view = presentationFixture(); view.setState("STREAMING");
+  view.setDisplayName("Voltage"); view.setLatest({ voltage_V: 1, current_A: null, flags }); view.render(); assert.equal(view.quality.textContent, "");
+  view.setDisplayName("Current"); view.setLatest({ voltage_V: null, current_A: 0.1, flags }); view.render(); assert.equal(view.quality.textContent, "");
+  view.setDisplayName("Both"); view.setLatest({ voltage_V: 1, current_A: null, flags }); view.render(); assert.equal(view.quality.textContent, "無効");
 });

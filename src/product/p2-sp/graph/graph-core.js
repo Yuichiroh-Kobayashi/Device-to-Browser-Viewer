@@ -81,7 +81,7 @@ function engineeringPresentation(value, channel, scale, compact) {
     return `${normalizedFixed(value, digits)}${space}V`;
   }
   const magnitude = Math.abs(scale);
-  if (magnitude >= 1) return `${normalizedFixed(value, 0)}${space}A`;
+  if (magnitude >= 0.2) return `${normalizedFixed(value, 1)}${space}A`;
   if (magnitude >= 0.001) return `${normalizedFixed(value * 1e3, 0)}${space}mA`;
   return `${normalizedFixed(value * 1e6, 0)}${space}µA`;
 }
@@ -155,8 +155,8 @@ export function constructGraphFrame({ records, channel, scale, domain, originTim
 }
 
 export class GraphPolicyController {
-  constructor({ windowSeconds = 60 } = {}) { this.windowSeconds = windowSeconds; this.epochGeneration = 0; this.previousControlState = null; this.reset(); }
-  reset() { this.scaleIndices = { voltage: 0, current: 0 }; this.originTimestampUs = null; this.streamId = null; this.reverseObservation = { observedInWindow: false, mostNegative: null }; this.epochGeneration += 1; this.scaleEvaluationIdentity = null; }
+  constructor({ windowSeconds = 60 } = {}) { this.windowSeconds = windowSeconds; this.epochGeneration = 0; this.windowGeneration = 0; this.previousControlState = null; this.reset(); }
+  reset() { this.scaleIndices = { voltage: 0, current: 0 }; this.originTimestampUs = null; this.streamId = null; this.reverseObservation = { observedInWindow: false, mostNegative: null }; this.epochGeneration += 1; this.scaleEvaluationIdentity = { voltage: null, current: null }; }
   observeLifecycle({ controlState, streamId = null, timebaseReset = false } = {}) {
     const enteredStreaming = this.previousControlState !== "STREAMING" && controlState === "STREAMING";
     const streamChanged = streamId !== null && this.streamId !== null && streamId !== this.streamId;
@@ -165,7 +165,7 @@ export class GraphPolicyController {
     if (streamId !== null) this.streamId = streamId;
     return enteredStreaming || timebaseReset || streamChanged;
   }
-  setWindowSeconds(value) { if (!DISPLAY_WINDOWS.includes(value)) throw new RangeError("window must be 10, 30, or 60 seconds"); if (this.windowSeconds !== value) { this.windowSeconds = value; this.scaleEvaluationIdentity = null; } }
+  setWindowSeconds(value) { if (!DISPLAY_WINDOWS.includes(value)) throw new RangeError("window must be 10, 30, or 60 seconds"); if (this.windowSeconds !== value) { this.windowSeconds = value; this.windowGeneration += 1; this.scaleEvaluationIdentity = { voltage: null, current: null }; } }
   update(records) {
     const timestamped = records.filter((record) => typeof record.timestamp_us === "bigint");
     if (this.originTimestampUs === null && timestamped.length) this.originTimestampUs = timestamped[0].timestamp_us;
@@ -175,15 +175,15 @@ export class GraphPolicyController {
       const x = Number(record.timestamp_us - this.originTimestampUs) / 1e6;
       return x >= domain.minimum && x <= domain.maximum;
     });
-    const last = timestamped.at(-1);
-    const evaluationIdentity = `${this.epochGeneration}:${this.windowSeconds}:${last?.stream_id ?? "none"}:${last?.sequence?.toString() ?? "none"}`;
-    if (evaluationIdentity !== this.scaleEvaluationIdentity) {
-      for (const channel of ["voltage", "current"]) {
+    for (const channel of ["voltage", "current"]) {
+      const latestValid = active.findLast((record) => finiteValue(record, channel) !== null);
+      const evaluationIdentity = `${this.epochGeneration}:${this.windowGeneration}:${latestValid?.stream_id ?? "none"}:${latestValid?.sequence?.toString() ?? "none"}`;
+      if (evaluationIdentity !== this.scaleEvaluationIdentity[channel]) {
         const scales = channel === "voltage" ? VOLTAGE_SCALES : CURRENT_SCALES;
         const scaleUpdate = updateStagedScale(scales, this.scaleIndices[channel], active.map((record) => finiteValue(record, channel)));
         this.scaleIndices[channel] = scaleUpdate.scaleIndex;
+        this.scaleEvaluationIdentity[channel] = evaluationIdentity;
       }
-      this.scaleEvaluationIdentity = evaluationIdentity;
     }
     const voltage = constructGraphFrame({ records: active, channel: "voltage", scale: VOLTAGE_SCALES[this.scaleIndices.voltage], domain, originTimestampUs: this.originTimestampUs });
     const current = constructGraphFrame({ records: active, channel: "current", scale: CURRENT_SCALES[this.scaleIndices.current], domain, originTimestampUs: this.originTimestampUs });

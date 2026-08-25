@@ -2,13 +2,17 @@ export function qualityFor(owner) {
   const record = owner.model.latest;
   if (!record) return Object.freeze({ overall: "no-valid-data", voltage: "no-valid-data", current: "no-valid-data", gap: false });
   const gap = Boolean(record.flags?.gap_samples > 0n || record.flags?.discontinuity);
-  const stale = owner.adapter.summary().controlState !== "STREAMING";
+  const invalid = record.voltage_V === null || record.current_A === null;
   return Object.freeze({
-    overall: stale ? "stale" : gap ? "gap" : "current",
-    voltage: record.voltage_V === null ? "invalid" : stale ? "stale" : "current",
-    current: record.current_A === null ? "invalid" : stale ? "stale" : "current",
+    overall: gap ? "gap" : invalid ? "invalid" : "normal",
+    voltage: record.voltage_V === null ? "invalid" : gap ? "gap" : "normal",
+    current: record.current_A === null ? "invalid" : gap ? "gap" : "normal",
     gap,
   });
+}
+
+export function runtimeValueState(owner) {
+  return owner.adapter.summary().controlState === "STREAMING" ? "" : "停止時の値";
 }
 
 export function displayValue(value, unit, state) {

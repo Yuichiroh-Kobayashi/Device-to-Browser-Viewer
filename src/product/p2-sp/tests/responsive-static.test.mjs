@@ -42,6 +42,8 @@ assert.equal(studentPrimaryActionState(state("READY"), blockedDeployment, { inFl
 assert.equal(studentPrimaryActionState(state("STREAMING"), openDeployment, { inFlight: false }).label, "測定終了 / Stop");
 assert.equal(studentPrimaryActionState(state("READY"), openDeployment, { inFlight: true, operationKind: "start" }).label, "開始中… / Starting…");
 assert.match(app, /await studentPrimaryAction\.activate\(deployment\);/);
+assert.match(app, /actionDiagnostics\.record\(studentPrimaryAction\.snapshot\(\)\.lastAttemptedOperation\)/);
+assert.match(app, /studentPrimaryAction\.dispose\(\)/);
 assert.match(app, /owner\.subscribe\(\(\) => presentation\.update\(\)\)/);
 assert.doesNotMatch(app, /owner\.subscribe\(\(\) => controller\.setMode/);
 assert.doesNotMatch(app, /pointerdown|mousedown|touchstart|debounce|retry/i);

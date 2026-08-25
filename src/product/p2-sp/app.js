@@ -45,6 +45,7 @@ export function createViewerApplication({
   let controller;
   let presentation;
   let waveforms = null;
+  let destroyed = false;
   const waveformRender = createAnimationFrameQueue(animationScheduler, () => {
     if (!waveforms) return;
     const records = owner.model.recordSnapshot();
@@ -111,7 +112,7 @@ export function createViewerApplication({
         try {
           await studentPrimaryAction.activate(deployment);
         } catch {
-          actionDiagnostics.record(studentPrimaryAction.snapshot().operationKind);
+          actionDiagnostics.record(studentPrimaryAction.snapshot().lastAttemptedOperation);
           presentation.update();
         }
       };
@@ -135,7 +136,10 @@ export function createViewerApplication({
     presentation,
     actionDiagnostics,
     destroy() {
+      if (destroyed) return;
+      destroyed = true;
       unsubscribe();
+      studentPrimaryAction.dispose();
       destroyWaveforms();
     },
   });

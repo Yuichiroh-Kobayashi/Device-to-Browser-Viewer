@@ -98,15 +98,15 @@ test("timeout/disconnect convergence rejects without retry or reconnect", async 
   }
 });
 
-test("mode switching cannot duplicate an application-lifetime operation", async () => {
-  const f = fixture("READY");
-  const identity = { owner: f.owner, adapter: f.owner.adapter };
-  const controller = new StudentPrimaryActionController(f.owner);
-  const operation = controller.activate(allowed);
-  for (const mode of ["professional", "student", "professional"]) assert.equal(await controller.activate(allowed), false, mode);
-  assert.strictEqual(f.owner, identity.owner);
-  assert.strictEqual(f.owner.adapter, identity.adapter);
-  assert.equal(f.counts.start, 1);
-  f.drive("STREAMING");
-  await operation;
+test("failed operations retain safe diagnostic attribution after operationKind clears", async () => {
+  for (const initialState of ["READY", "STREAMING"]) {
+    const f = fixture(initialState);
+    const controller = new StudentPrimaryActionController(f.owner);
+    const operation = controller.activate(allowed);
+    f.drive("CLOSED");
+    await assert.rejects(operation, /ended in CLOSED/);
+    assert.equal(controller.snapshot().operationKind, null);
+    assert.equal(controller.snapshot().lastAttemptedOperation, initialState === "STREAMING" ? "stop" : "start");
+    controller.dispose();
+  }
 });

@@ -22,7 +22,12 @@ export class StudentPrimaryActionController {
     this.owner = owner;
     this.inFlight = false;
     this.operationKind = null;
+    this.lastAttemptedOperation = null;
     this.studentOpenedTransport = false;
+    this.disposed = false;
+    this.unsubscribe = owner.subscribe(() => {
+      if (owner.adapter.summary().controlState === "CLOSED") this.studentOpenedTransport = false;
+    });
   }
 
   activate(deployment) {
@@ -34,6 +39,7 @@ export class StudentPrimaryActionController {
     if (state.startPending || state.stopPending) return Promise.resolve(false);
     this.inFlight = true;
     this.operationKind = operation;
+    this.lastAttemptedOperation = operation;
     return this.#run(operation, state.controlState).finally(() => {
       this.inFlight = false;
       this.operationKind = null;
@@ -61,6 +67,12 @@ export class StudentPrimaryActionController {
   }
 
   snapshot() {
-    return Object.freeze({ inFlight: this.inFlight, operationKind: this.operationKind, studentOpenedTransport: this.studentOpenedTransport });
+    return Object.freeze({ inFlight: this.inFlight, operationKind: this.operationKind, lastAttemptedOperation: this.lastAttemptedOperation, studentOpenedTransport: this.studentOpenedTransport });
+  }
+
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.unsubscribe();
   }
 }

@@ -1,9 +1,10 @@
 import { createRuntimeOwner } from "./runtime-owner.js";
 import { createAnimationFrameQueue, createBoundedActionDiagnostics, createPresentationCoordinator, ModeController } from "./presentation/mode-controller.js";
-import { studentActionEnabled, studentMarkup, updateStudentPresentation } from "./presentation/student-view.js";
+import { studentMarkup, updateStudentPresentation } from "./presentation/student-view.js";
 import { professionalMarkup, updateProfessionalPresentation } from "./presentation/professional-view.js";
 import { assessDeployment, bootstrapDeviceHosted } from "./presentation/deployment-context.js";
 import { WaveformCanvas } from "../source-export/viewer/src/render/waveform-canvas.js";
+import { StudentPrimaryActionController } from "./student-primary-action-controller.js";
 
 const BUILD_INCLUDE_PROFESSIONAL = typeof __INCLUDE_PROFESSIONAL__ === "undefined" ? true : __INCLUDE_PROFESSIONAL__;
 
@@ -40,6 +41,7 @@ export function createViewerApplication({
     ? assessDeployment({ target: "device-hosted" })
     : assessDeployment({ target: "external-development", explicitDeveloperConfiguration: true });
   const actionDiagnostics = createBoundedActionDiagnostics();
+  const studentPrimaryAction = new StudentPrimaryActionController(owner);
   let controller;
   let presentation;
   let waveforms = null;
@@ -78,7 +80,7 @@ export function createViewerApplication({
         return;
       }
     }
-    updateStudentPresentation(root, owner, deployment, diagnostic);
+    updateStudentPresentation(root, owner, deployment, diagnostic, studentPrimaryAction);
     waveformRender.request();
   }
 
@@ -103,18 +105,17 @@ export function createViewerApplication({
     };
     const toggle = root.querySelector("#toggle");
     if (toggle) toggle.onclick = () => controller.toggle();
-    root.querySelectorAll("[data-action]").forEach((button) => {
-      button.onclick = async () => {
-        const action = button.dataset.action;
-        if (!studentActionEnabled(owner.adapter.summary(), deployment, action)) return;
+    const studentButton = root.querySelector("[data-student-primary-action]");
+    if (studentButton) {
+      studentButton.onclick = async () => {
         try {
-          await owner.actions[action]();
+          await studentPrimaryAction.activate(deployment);
         } catch {
-          actionDiagnostics.record(action);
+          actionDiagnostics.record(studentPrimaryAction.snapshot().operationKind);
           presentation.update();
         }
       };
-    });
+    }
   }
 
   presentation = createPresentationCoordinator({ mount, update });

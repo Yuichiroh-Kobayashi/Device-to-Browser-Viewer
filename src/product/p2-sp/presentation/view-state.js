@@ -12,7 +12,8 @@ export function qualityFor(owner) {
 }
 
 export function displayValue(value, unit, state) {
-  return value === null || value === undefined ? `— ${state}` : `${value.toFixed(3)} ${unit} (${state})`;
+  const suffix = state ? ` (${state})` : "";
+  return value === null || value === undefined ? `—${suffix}` : `${value.toFixed(3)} ${unit}${suffix}`;
 }
 
 const FATAL_CODES = new Set(["bad_magic", "control_rejected", "binary_rejected", "invalid_message", "invalid_welcome", "unsupported_protocol"]);

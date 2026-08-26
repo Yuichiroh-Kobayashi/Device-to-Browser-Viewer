@@ -6,6 +6,7 @@ import { assessDeployment, bootstrapDeviceHosted } from "./presentation/deployme
 import { GraphPolicyController } from "./graph/graph-core.js";
 import { GraphWaveformCanvas } from "./graph/waveform-canvas.js";
 import { StudentPrimaryActionController } from "./student-primary-action-controller.js";
+import { createThemeController, createThemeMediaQuery, themeControlMarkup } from "./presentation/theme-controller.js";
 
 const BUILD_INCLUDE_PROFESSIONAL = typeof __INCLUDE_PROFESSIONAL__ === "undefined" ? true : __INCLUDE_PROFESSIONAL__;
 
@@ -36,6 +37,8 @@ export function createViewerApplication({
   includeProfessional = true,
   pageLocation = globalThis.location,
   animationScheduler = globalThis,
+  themeMedia = createThemeMediaQuery(globalThis),
+  themeRoot = globalThis.document?.documentElement ?? null,
 } = {}) {
   if (!root) throw new TypeError("viewer root is required");
   let deployment = deploymentTarget === "device-hosted"
@@ -44,6 +47,9 @@ export function createViewerApplication({
   const actionDiagnostics = createBoundedActionDiagnostics();
   const studentPrimaryAction = new StudentPrimaryActionController(owner);
   const graphPolicy = new GraphPolicyController({ windowSeconds: owner.model.displayWindowSeconds });
+  // Application-lifetime presentation state. It is deliberately not reachable
+  // from owner/adapter/model, and is rebuilt as "system" on every construction.
+  const theme = createThemeController({ media: themeMedia, root: themeRoot });
   let controller;
   let presentation;
   let waveforms = null;
@@ -94,9 +100,9 @@ export function createViewerApplication({
     let professional = false;
     if (BUILD_INCLUDE_PROFESSIONAL) {
       professional = professionalModeAllowed(BUILD_INCLUDE_PROFESSIONAL, includeProfessional, mode);
-      root.innerHTML = `${professional ? professionalMarkup(owner, deployment) : studentMarkup()}${displayWindowMarkup(owner.model.displayWindowSeconds)}${includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : ""}`;
+      root.innerHTML = `${professional ? professionalMarkup(owner, deployment) : studentMarkup()}${displayWindowMarkup(owner.model.displayWindowSeconds)}${themeControlMarkup(theme.label)}${includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : ""}`;
     } else {
-      root.innerHTML = `${studentMarkup()}${displayWindowMarkup(owner.model.displayWindowSeconds)}`;
+      root.innerHTML = `${studentMarkup()}${displayWindowMarkup(owner.model.displayWindowSeconds)}${themeControlMarkup(theme.label)}`;
     }
     mountWaveforms();
     const displayWindow = root.querySelector("[data-display-window]");
@@ -111,6 +117,8 @@ export function createViewerApplication({
     };
     const toggle = root.querySelector("#toggle");
     if (toggle) toggle.onclick = () => controller.toggle();
+    const themeButton = root.querySelector("[data-theme-toggle]");
+    if (themeButton) themeButton.onclick = () => theme.toggle();
     const studentButton = root.querySelector("[data-student-primary-action]");
     if (studentButton) {
       studentButton.onclick = async () => {
@@ -125,6 +133,13 @@ export function createViewerApplication({
     }
   }
 
+  // Repainting the canvas and relabelling the existing control is the whole
+  // theme effect: no remount, and nothing here touches transport or model.
+  function syncThemeControl() {
+    const themeButton = root.querySelector("[data-theme-toggle]");
+    if (themeButton) themeButton.textContent = theme.label;
+  }
+  const unsubscribeTheme = theme.subscribe(() => { syncThemeControl(); waveformRender.request(); });
   presentation = createPresentationCoordinator({ mount, update });
   controller = new ModeController(owner, { deployment, render: (mode) => presentation.setMode(mode) });
   const observeGraphLifecycle = () => {
@@ -147,12 +162,15 @@ export function createViewerApplication({
     owner,
     controller,
     presentation,
+    theme,
     actionDiagnostics,
     graphPolicy,
     destroy() {
       if (destroyed) return;
       destroyed = true;
       unsubscribe();
+      unsubscribeTheme();
+      theme.dispose();
       studentPrimaryAction.dispose();
       destroyWaveforms();
     },

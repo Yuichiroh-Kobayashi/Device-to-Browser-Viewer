@@ -18,14 +18,19 @@ export function studentAggregateQuality(quality, visibility) {
   return "normal";
 }
 
+/**
+ * `kind` is the semantic action role the presentation layer styles from. It is
+ * derived from runtime state, never from the localized label text, so the Stop
+ * presentation cannot drift with translation.
+ */
 export function studentPrimaryActionState(state, deployment, operation) {
-  if (operation.inFlight) return Object.freeze({ enabled: false, busy: true, label: operation.operationKind === "stop" ? "終了中… / Stopping…" : "開始中… / Starting…" });
-  if (state.startPending) return Object.freeze({ enabled: false, busy: true, label: "開始中… / Starting…" });
-  if (state.stopPending) return Object.freeze({ enabled: false, busy: true, label: "終了中… / Stopping…" });
-  if (state.controlState === "CONNECTED") return Object.freeze({ enabled: false, busy: true, label: "開始中… / Starting…" });
-  if (state.controlState === "STREAMING") return Object.freeze({ enabled: true, busy: false, label: "測定終了 / Stop" });
+  if (operation.inFlight) return Object.freeze({ enabled: false, busy: true, kind: "busy", label: operation.operationKind === "stop" ? "終了中… / Stopping…" : "開始中… / Starting…" });
+  if (state.startPending) return Object.freeze({ enabled: false, busy: true, kind: "busy", label: "開始中… / Starting…" });
+  if (state.stopPending) return Object.freeze({ enabled: false, busy: true, kind: "busy", label: "終了中… / Stopping…" });
+  if (state.controlState === "CONNECTED") return Object.freeze({ enabled: false, busy: true, kind: "busy", label: "開始中… / Starting…" });
+  if (state.controlState === "STREAMING") return Object.freeze({ enabled: true, busy: false, kind: "stop", label: "測定終了 / Stop" });
   const enabled = (state.controlState === "CLOSED" || state.controlState === "READY") && deployment.startAllowed === true;
-  return Object.freeze({ enabled, busy: false, label: "測定開始 / Start" });
+  return Object.freeze({ enabled, busy: false, kind: enabled ? "start" : "disabled", label: "測定開始 / Start" });
 }
 
 function required(root, selector) {
@@ -38,7 +43,7 @@ export function studentMarkup() {
   return `<section class="student" aria-label="生徒向け測定">
     <header><strong>VAMeter / V-I measurement</strong><span data-live="connection"></span><span data-live="stream"></span></header>
     <p class="deployment" data-live="deployment"></p>
-    <div class="primary-action"><button data-student-primary-action disabled>測定開始 / Start</button></div>
+    <div class="primary-action"><button data-student-primary-action data-action-kind="disabled" disabled>測定開始 / Start</button></div>
     <div class="values"><output data-value-panel="voltage" data-live="voltage"></output><output data-value-panel="current" data-live="current"></output></div>
     <div class="graphs" data-student-graphs>
       <section class="graph-panel" data-graph-panel="voltage" aria-label="Voltage graph"><canvas data-waveform="voltage" role="img" aria-label="Voltage graph over device time; gaps are not joined"></canvas></section>
@@ -81,6 +86,7 @@ export function updateStudentPresentation(root, owner, deployment, actionDiagnos
   const primaryState = studentPrimaryActionState(state, deployment, primaryController.snapshot());
   const button = required(root, "[data-student-primary-action]");
   button.textContent = primaryState.label;
+  button.dataset.actionKind = primaryState.kind;
   button.disabled = !primaryState.enabled;
   button.setAttribute("aria-disabled", String(!primaryState.enabled));
   button.setAttribute("aria-busy", String(primaryState.busy));

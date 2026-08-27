@@ -100,9 +100,9 @@ export function createViewerApplication({
     let professional = false;
     if (BUILD_INCLUDE_PROFESSIONAL) {
       professional = professionalModeAllowed(BUILD_INCLUDE_PROFESSIONAL, includeProfessional, mode);
-      root.innerHTML = `${professional ? professionalMarkup(owner, deployment) : studentMarkup()}${displayWindowMarkup(owner.model.displayWindowSeconds)}${themeControlMarkup(theme.label)}${includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : ""}`;
+      root.innerHTML = `${themeControlMarkup(theme.label)}${professional ? professionalMarkup(owner, deployment) : studentMarkup()}${displayWindowMarkup(owner.model.displayWindowSeconds)}${includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : ""}`;
     } else {
-      root.innerHTML = `${studentMarkup()}${displayWindowMarkup(owner.model.displayWindowSeconds)}${themeControlMarkup(theme.label)}`;
+      root.innerHTML = `${themeControlMarkup(theme.label)}${studentMarkup()}${displayWindowMarkup(owner.model.displayWindowSeconds)}`;
     }
     mountWaveforms();
     const displayWindow = root.querySelector("[data-display-window]");

@@ -57,44 +57,72 @@ const DARK_MEDIA = tokens(block(/@media \(prefers-color-scheme: dark\) \{\s*:roo
 const DARK_OVERRIDE = tokens(block(/:root\[data-theme="dark"\] \{\s*color-scheme: dark;([^}]*)\}/, "manual dark override"));
 
 /**
- * Every pair that must hold, with the role names spelled out so a failure
- * identifies the exact semantic pair rather than a raw colour.
+ * ACTIVE pairs: roles the shipped UI actually renders today, each paired with
+ * the background it is actually drawn on. The purpose string names the real
+ * rendering context so a failure points at the surface, not just at a token.
  */
 const REQUIRED_PAIRS = Object.freeze([
-  ["text", "surface", TEXT_MINIMUM, "body text on a panel surface"],
-  ["text", "page", TEXT_MINIMUM, "body text on the page"],
-  ["text-muted", "surface", TEXT_MINIMUM, "secondary text on a panel surface"],
-  ["text-muted", "page", TEXT_MINIMUM, "secondary text on the page"],
-  ["border", "surface", NON_TEXT_MINIMUM, "panel border against its own surface"],
-  ["border", "page", NON_TEXT_MINIMUM, "panel border against the page"],
-  ["action-primary-text", "action-primary-surface", TEXT_MINIMUM, "Start label on the primary action"],
-  ["action-primary-surface", "page", NON_TEXT_MINIMUM, "primary action boundary against the page"],
-  ["action-stop-text", "action-stop-surface", TEXT_MINIMUM, "Stop label on the stop action"],
-  ["action-stop-surface", "page", NON_TEXT_MINIMUM, "stop action boundary against the page"],
-  ["measure-voltage", "surface", TEXT_MINIMUM, "Voltage identity used as text on a surface"],
-  ["measure-voltage", "page", TEXT_MINIMUM, "Voltage identity used as text on the page"],
-  ["measure-current", "surface", TEXT_MINIMUM, "Current identity used as text on a surface"],
-  ["measure-current", "page", TEXT_MINIMUM, "Current identity used as text on the page"],
-  ["status-ready", "surface", TEXT_MINIMUM, "ready status text"],
-  ["status-streaming", "surface", TEXT_MINIMUM, "streaming status text"],
-  ["status-busy", "surface", TEXT_MINIMUM, "busy status text"],
-  ["status-warning", "surface", TEXT_MINIMUM, "warning status text"],
-  ["status-recoverable", "surface", TEXT_MINIMUM, "recoverable error text"],
-  ["status-fatal", "surface", TEXT_MINIMUM, "fatal error text"],
-  ["status-disabled", "surface", TEXT_MINIMUM, "disabled control text"],
-  ["focus-inner", "surface", NON_TEXT_MINIMUM, "focus ring against a panel surface"],
+  // Page and panel chrome.
+  ["text", "surface", TEXT_MINIMUM, "body text inside a panel (.values output / .graphs section / .professional)"],
+  ["text", "page", TEXT_MINIMUM, "body text directly on the page background"],
+  ["text-muted", "surface", TEXT_MINIMUM, "quality line text on a panel"],
+  ["text-muted", "page", TEXT_MINIMUM, "quality line text on the page"],
+  ["border", "surface", NON_TEXT_MINIMUM, "panel border against the panel it encloses"],
+  ["border", "page", NON_TEXT_MINIMUM, "panel border against the page behind it"],
+  // Primary action, in each semantic role the button can take.
+  ["action-primary-text", "action-primary-surface", TEXT_MINIMUM, "Start label on the Start surface (data-action-kind=start)"],
+  ["action-primary-surface", "page", NON_TEXT_MINIMUM, "Start button boundary against the page"],
+  ["action-stop-text", "action-stop-surface", TEXT_MINIMUM, "Stop label on the Stop surface (data-action-kind=stop)"],
+  ["action-stop-surface", "page", NON_TEXT_MINIMUM, "Stop button boundary against the page"],
+  ["status-busy", "surface", TEXT_MINIMUM, "busy label on the busy surface (data-action-kind=busy)"],
+  ["status-busy", "page", NON_TEXT_MINIMUM, "busy button border against the page"],
+  ["surface", "status-disabled", TEXT_MINIMUM, "disabled label on the disabled surface (data-action-kind=disabled)"],
+  ["status-disabled", "page", NON_TEXT_MINIMUM, "disabled button boundary against the page"],
+  // Secondary controls: theme toggle, mode toggle, display-window select.
+  ["text", "surface", TEXT_MINIMUM, "secondary button and select label on their own surface"],
+  // Measurement identity used as text in the value panels.
+  ["measure-voltage", "surface", NON_TEXT_MINIMUM, "Voltage value-panel accent rule against the panel"],
+  ["measure-current", "surface", NON_TEXT_MINIMUM, "Current value-panel accent rule against the panel"],
+  ["measure-voltage", "page", NON_TEXT_MINIMUM, "Voltage accent rule against the page"],
+  ["measure-current", "page", NON_TEXT_MINIMUM, "Current accent rule against the page"],
+  // Deployment and error status text, on the panel/page they render against.
+  ["status-ready", "page", TEXT_MINIMUM, "matched deployment status text"],
+  ["status-fatal", "page", TEXT_MINIMUM, "unknown/mismatched deployment status text"],
+  ["status-recoverable", "page", TEXT_MINIMUM, "non-empty error line text"],
+  ["status-ready", "surface", TEXT_MINIMUM, "matched deployment status text on a panel"],
+  ["status-fatal", "surface", TEXT_MINIMUM, "unknown/mismatched deployment status text on a panel"],
+  ["status-recoverable", "surface", TEXT_MINIMUM, "error line text on a panel"],
+  // Focus, against both grounds a focusable control can sit on.
+  ["focus-inner", "surface", NON_TEXT_MINIMUM, "focus ring against a panel"],
   ["focus-inner", "page", NON_TEXT_MINIMUM, "focus ring against the page"],
   ["focus-outer", "focus-inner", NON_TEXT_MINIMUM, "outer focus layer against the inner ring"],
-  ["graph-foreground", "graph-background", TEXT_MINIMUM, "graph title and axis tick text"],
+  // Canvas text: drawn by the renderer onto --graph-background.
+  ["graph-foreground", "graph-background", TEXT_MINIMUM, "graph title, scale readout and axis tick text"],
   ["graph-muted", "graph-background", TEXT_MINIMUM, "graph no-valid-data text"],
+  ["graph-gap", "graph-background", TEXT_MINIMUM, "GAP <n> marker label text on the canvas"],
+  ["graph-segment", "graph-background", TEXT_MINIMUM, "SEGMENT marker label text on the canvas"],
+  // Canvas geometry: required graphical information on --graph-background.
   ["graph-grid", "graph-background", NON_TEXT_MINIMUM, "graph grid line"],
   ["graph-zero-boundary", "graph-background", NON_TEXT_MINIMUM, "graph zero/boundary line"],
-  ["graph-voltage-accent", "graph-background", NON_TEXT_MINIMUM, "Voltage waveform"],
-  ["graph-current-accent", "graph-background", NON_TEXT_MINIMUM, "Current waveform"],
-  ["graph-gap", "graph-background", NON_TEXT_MINIMUM, "gap marker"],
-  ["graph-invalid", "graph-background", NON_TEXT_MINIMUM, "invalid-run marker"],
-  ["graph-segment", "graph-background", NON_TEXT_MINIMUM, "segment/timebase boundary marker"],
-  ["graph-reverse-warning", "graph-background", NON_TEXT_MINIMUM, "reverse-current warning token"],
+  ["graph-voltage-accent", "graph-background", NON_TEXT_MINIMUM, "Voltage waveform stroke"],
+  ["graph-current-accent", "graph-background", NON_TEXT_MINIMUM, "Current waveform stroke"],
+  ["graph-gap", "graph-background", NON_TEXT_MINIMUM, "gap marker rule"],
+  ["graph-segment", "graph-background", NON_TEXT_MINIMUM, "segment/timebase boundary marker rule"],
+  ["graph-invalid", "graph-background", NON_TEXT_MINIMUM, "invalid-run baseline marker"],
+]);
+
+/**
+ * RESERVED roles: defined in the semantic palette but NOT rendered by current
+ * product UI. They are validated so the palette stays ready, and are listed
+ * here explicitly so no document can claim the UI already consumes them.
+ */
+const RESERVED_ROLES = Object.freeze(["status-streaming", "status-warning", "graph-reverse-warning"]);
+const RESERVED_PAIRS = Object.freeze([
+  ["status-streaming", "surface", TEXT_MINIMUM, "reserved streaming status text"],
+  ["status-streaming", "page", TEXT_MINIMUM, "reserved streaming status text on the page"],
+  ["status-warning", "surface", TEXT_MINIMUM, "reserved warning status text"],
+  ["status-warning", "page", TEXT_MINIMUM, "reserved warning status text on the page"],
+  ["graph-reverse-warning", "graph-background", NON_TEXT_MINIMUM, "reserved reverse-current warning mark"],
 ]);
 
 /**
@@ -170,6 +198,68 @@ test("the system dark block and the manual dark override are the same palette", 
   assert.deepEqual([...LIGHT.keys()].sort(), [...DARK_OVERRIDE.keys()].sort(), "light and dark declare different token sets");
 });
 
+test("reserved roles are validated as palette, and are not claimed as rendered", () => {
+  for (const [themeName, table] of [["light", LIGHT], ["dark", DARK_OVERRIDE]]) {
+    for (const [foreground, background, minimum, purpose] of RESERVED_PAIRS) {
+      const ratio = contrastRatio(table.get(foreground), table.get(background));
+      console.log(`RESERVED ${themeName} --${foreground} on --${background} = ${ratio.toFixed(2)}:1, target ${minimum.toFixed(1)}:1 — ${purpose}`);
+      assert.ok(ratio >= minimum, `${themeName} reserved role --${foreground} on --${background} is ${ratio.toFixed(2)}:1, below ${minimum.toFixed(1)}:1`);
+    }
+  }
+  // A reserved role must NOT be referenced by a presentation rule or by the
+  // renderer. If one becomes consumed, it has to move into REQUIRED_PAIRS and
+  // be documented as active rather than silently gaining a claim.
+  const rules = presentationRules();
+  const renderer = readFileSync(new URL("../graph/waveform-canvas.js", import.meta.url), "utf8");
+  for (const role of RESERVED_ROLES) {
+    assert.ok(!rules.includes(`var(--${role})`), `--${role} is documented as reserved but a CSS rule consumes it`);
+    const graphRole = role.startsWith("graph-") ? role.slice("graph-".length) : null;
+    if (graphRole) assert.ok(!renderer.includes(`"${graphRole}"`), `--${role} is documented as reserved but the renderer consumes it`);
+  }
+});
+
+/** The stylesheet with the token-definition blocks removed: what actually renders. */
+function presentationRules() {
+  return cssSource
+    .replace(/:root \{\s*color-scheme: light dark;[^}]*\}/, "")
+    .replace(/@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\) \{[^}]*\}\s*\}/, "")
+    .replace(/:root\[data-theme="dark"\] \{\s*color-scheme: dark;[^}]*\}/, "");
+}
+
+test("every active role is actually consumed by a rule or by the renderer", () => {
+  const rules = presentationRules();
+  const renderer = readFileSync(new URL("../graph/waveform-canvas.js", import.meta.url), "utf8");
+  // Token definitions must be gone, so a match below is a real consumption.
+  assert.doesNotMatch(rules, /--page: #/, "token definition blocks were not stripped");
+
+  const cssConsumed = [
+    "page", "surface", "text", "text-muted", "border",
+    "action-primary-surface", "action-primary-text",
+    "action-stop-surface", "action-stop-text",
+    "status-busy", "status-disabled", "status-ready", "status-fatal", "status-recoverable",
+    "measure-voltage", "measure-current",
+    "graph-background", "focus-inner", "focus-outer",
+  ];
+  for (const role of cssConsumed) {
+    assert.ok(rules.includes(`var(--${role})`), `no presentation rule consumes --${role}`);
+  }
+  // Collect the role literals the renderer actually passes to
+  // style(canvas, role, fallback), including the ones behind a ternary.
+  const resolvedGraphRoles = new Set();
+  for (const [, args] of renderer.matchAll(/style\(this\.canvas,([^)]*)\)/g)) {
+    for (const [, role] of args.matchAll(/"([a-z-]+)"/g)) resolvedGraphRoles.add(role);
+  }
+  for (const role of ["background", "foreground", "grid", "zero-boundary", "voltage-accent", "current-accent", "gap", "invalid", "segment", "muted"]) {
+    assert.ok(resolvedGraphRoles.has(role), `the renderer never resolves --graph-${role} (resolved: ${[...resolvedGraphRoles].join(", ")})`);
+  }
+  // The Stop role must be reachable from runtime state, not from label text.
+  const studentView = readFileSync(new URL("../presentation/student-view.js", import.meta.url), "utf8");
+  assert.match(studentView, /controlState === "STREAMING"\) return Object\.freeze\(\{ enabled: true, busy: false, kind: "stop"/);
+  assert.match(studentView, /button\.dataset\.actionKind = primaryState\.kind;/);
+  assert.match(rules, /\.primary-action button\[data-action-kind="stop"\] \{ color: var\(--action-stop-text\); background: var\(--action-stop-surface\)/);
+  assert.doesNotMatch(rules, /測定終了|Stop"\]/, "presentation must not key off localized label text");
+});
+
 test("every required semantic role namespace is declared in both themes", () => {
   const required = [
     "page", "surface", "text", "text-muted", "border",
@@ -198,25 +288,30 @@ test("the Issue #9 channel colour candidates are carried without substitution", 
   assert.equal(DARK_OVERRIDE.get("graph-current-accent"), "#f6aa00");
 });
 
-test("channel colour is recorded as supplemental, never as the sole identity", () => {
-  // The two channel families sit at near-identical relative luminance, so they
-  // are NOT separable by contrast or in grayscale. That is acceptable only
-  // because they never share a canvas (single-canvas overlay is an explicit
-  // Issue #9 non-goal) and each carries a visible name, unit and graph title.
-  // This assertion pins the fact so it cannot be quietly reinterpreted as a
-  // colour-only channel discriminator.
+test("channel identity never depends on colour alone", () => {
+  // The Issue #9 invariant is that Voltage and Current stay identifiable with
+  // colour removed. Mutual channel contrast is NOT an invariant in either
+  // direction: it is recorded below as diagnostic evidence only, so a future
+  // palette improvement that happens to separate the families can never fail
+  // this suite.
   for (const [themeName, table] of [["light", LIGHT], ["dark", DARK_OVERRIDE]]) {
     const ratio = contrastRatio(table.get("graph-voltage-accent"), table.get("graph-current-accent"));
-    console.log(`INFO ${themeName} Voltage vs Current = ${ratio.toFixed(2)}:1 — not a required pair; channels are identified by name, unit and separate panel`);
-    assert.ok(ratio < NON_TEXT_MINIMUM, "if the channel families ever separate by contrast, revisit this recorded design boundary");
+    console.log(`INFO ${themeName} Voltage vs Current = ${ratio.toFixed(2)}:1 — diagnostic only, not gated in either direction`);
   }
+  // The required, gated identity carriers:
   const student = readFileSync(new URL("../presentation/student-view.js", import.meta.url), "utf8");
-  assert.match(student, /電圧 Voltage/);
-  assert.match(student, /電流 Current/);
-  assert.match(student, /aria-label="Voltage graph"/);
-  assert.match(student, /aria-label="Current graph"/);
+  assert.match(student, /電圧 Voltage/, "Voltage needs a visible channel name");
+  assert.match(student, /電流 Current/, "Current needs a visible channel name");
+  assert.match(student, /aria-label="Voltage graph"/, "Voltage needs its own labelled panel");
+  assert.match(student, /aria-label="Current graph"/, "Current needs its own labelled panel");
+  assert.match(student, /data-graph-panel="voltage"/);
+  assert.match(student, /data-graph-panel="current"/);
   const renderer = readFileSync(new URL("../graph/waveform-canvas.js", import.meta.url), "utf8");
+  // Title and unit are drawn onto each canvas.
   assert.match(renderer, /fillText\(`\$\{this\.title\} \(\$\{this\.unit\}\)`/);
+  const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(app, /channel: "voltage", unit: "V", title: "Voltage"/);
+  assert.match(app, /channel: "current", unit: "A", title: "Current"/);
 });
 
 test("gap, invalid and segment keep distinct non-colour cues", () => {

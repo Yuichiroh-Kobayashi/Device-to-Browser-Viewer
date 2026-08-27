@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createViewerApplication } from "../app.js";
 import { createRuntimeOwner } from "../runtime-owner.js";
+import { studentMarkup } from "../presentation/student-view.js";
 import { makeStartedText, makeViFrame, makeWelcomeText } from "../../source-export/viewer/src/sources/synthetic-source.js";
 
 /**
@@ -349,6 +350,56 @@ test("a system preference change during streaming re-themes without touching the
   assert.equal(application.theme.effective, "light");
   assert.equal(button.textContent, "ダーク表示 / Dark mode");
   frames.flush();
+  application.destroy();
+});
+
+test("the real mounted primary control takes the Stop role while streaming", async () => {
+  const { root, frames, owner, application } = buildApplication();
+  const button = () => root.querySelector("[data-student-primary-action]");
+  // CLOSED with a start-permitting deployment is already the Start role; the
+  // markup's own default is the disabled role until the first update runs.
+  assert.match(studentMarkup(), /data-action-kind="disabled" disabled/);
+  assert.equal(button().dataset.actionKind, "start");
+
+  const source = owner.requestLive();
+  const opening = source.open();
+  sockets.at(-1).driveOpen();
+  await opening;
+  sockets.at(-1).driveMessage(makeWelcomeText());
+  frames.flush();
+  assert.equal(owner.adapter.summary().controlState, "READY");
+  assert.equal(button().dataset.actionKind, "start", "READY with a permitted deployment is the Start role");
+
+  await source.start();
+  sockets.at(-1).driveMessage(makeStartedText(7, "live-vi"));
+  sockets.at(-1).driveMessage(makeViFrame({ streamId: 7, sequence: 1n, timestampUs: 1000n, flags: 1, voltage: 3.3, current: 0.12 }));
+  frames.flush();
+  assert.equal(owner.adapter.summary().controlState, "STREAMING");
+  // The mounted node itself carries the Stop role, which is what the Stop
+  // tokens are selected by.
+  assert.equal(button().dataset.actionKind, "stop");
+  assert.equal(button().textContent, "測定終了 / Stop");
+  assert.equal(button().disabled, false);
+
+  // A theme change must not disturb the action role.
+  root.querySelector("[data-theme-toggle]").onclick();
+  frames.flush();
+  assert.equal(button().dataset.actionKind, "stop", "a theme change changed the action role");
+
+  // The role survives a Professional round trip.
+  application.controller.setMode("professional");
+  frames.flush();
+  application.controller.setMode("student");
+  frames.flush();
+  assert.equal(button().dataset.actionKind, "stop");
+  application.destroy();
+});
+
+test("the theme control is mounted ahead of the measurement content", () => {
+  const { root, application } = buildApplication();
+  const html = root.innerHTML;
+  assert.ok(html.indexOf("data-theme-toggle") < html.indexOf("data-student-primary-action"), "the theme control must precede the primary action in the document");
+  assert.ok(html.indexOf("data-theme-toggle") < html.indexOf("data-student-graphs"), "the theme control must precede the graph stack");
   application.destroy();
 });
 

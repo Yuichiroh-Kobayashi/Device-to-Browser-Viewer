@@ -44,8 +44,11 @@ constructed once per application in [`src/product/p2-sp/app.js`](../../src/produ
 
 ## Interaction
 
-- One native `<button>`, secondary to the Student Start/Stop measurement control
-  and mounted after it.
+- One native `<button>`, mounted ahead of the measurement content in both
+  Student and Professional so it is inside the initial viewport at 768x1024
+  portrait without scrolling. It stays visually secondary to the Student
+  Start/Stop measurement control: compact and right-aligned against a
+  full-width 52px primary action.
 - Visible text naming the theme the learner would move to
   (`ダーク表示 / Dark mode`, `ライト表示 / Light mode`); any icon is redundant
   decoration only.
@@ -73,6 +76,43 @@ cover page/surface/text/border, primary and stop actions, Voltage and Current
 measurement identity, graph background/foreground/grid/zero/gap/invalid/segment,
 status ready/streaming/busy/warning/recoverable-error/fatal-error/disabled, and
 focus.
+
+### Active and reserved roles
+
+Not every declared role is rendered by current product UI. The distinction is
+enforced by `tests/theme-contrast.test.mjs`, which proves each active role is
+consumed by a presentation rule or by a renderer `style()` call, and proves each
+reserved role is **not**.
+
+**Active** — consumed by shipped UI today: `page`, `surface`, `text`,
+`text-muted`, `border`, `action-primary-surface`, `action-primary-text`,
+`action-stop-surface`, `action-stop-text`, `measure-voltage`, `measure-current`,
+`status-ready`, `status-recoverable`, `status-fatal`, `status-busy`,
+`status-disabled`, `focus-inner`, `focus-outer`, and every `graph-*` role except
+`graph-reverse-warning`.
+
+**Reserved** — defined in the palette and contrast-validated, but **not rendered
+by current UI**: `status-streaming`, `status-warning`, `graph-reverse-warning`.
+They exist so the palette is complete and ready; no document may describe them
+as though the UI already shows them. `graph-reverse-warning` in particular is
+not a reverse-current warning implementation — that behaviour remains
+unimplemented and coupled to reviewed Firmware Issue #15 policy.
+
+### Action roles
+
+The Student primary control's presentation is selected by a semantic action
+role, not by its localized label. `studentPrimaryActionState()` derives
+`kind` from runtime state and the view writes it to `data-action-kind`:
+
+| runtime state | `kind` | tokens consumed |
+| --- | --- | --- |
+| `STREAMING` | `stop` | `--action-stop-surface`, `--action-stop-text` |
+| `CLOSED`/`READY` and start permitted | `start` | `--action-primary-surface`, `--action-primary-text` |
+| pending/in-flight/`CONNECTED` | `busy` | `--status-busy`, `--surface` |
+| start not permitted | `disabled` | `--status-disabled`, `--surface` |
+
+No CSS rule keys off label text, so Stop presentation cannot drift with
+translation.
 
 Light is the declared foundation in `:root`. The dark foundation applies through
 `@media (prefers-color-scheme: dark)` while no explicit override is held, and
@@ -102,6 +142,14 @@ contrast maths is a local implementation of the WCAG relative-luminance and
 contrast-ratio definitions; no package dependency and no Viewer runtime are
 involved.
 
+Each checked pair names the background the role is **actually** drawn on rather
+than a convenient palette pairing — panel text against `--surface`, page text
+against `--page`, the Stop label against `--action-stop-surface`, the disabled
+label against `--status-disabled`, canvas marks against `--graph-background`.
+The `GAP <n>` and `SEGMENT` marker labels are visible canvas text and are gated
+at 4.5:1 against the graph background, separately from their marker rules, which
+are gated at 3:1.
+
 ## Non-colour redundancy
 
 Colour is never the only authority:
@@ -121,11 +169,14 @@ No red/green pair is used as the sole discriminator for Start/Stop, channel
 identity, good/bad, or safe/error.
 
 The two channel families sit at near-identical relative luminance, so they do
-not separate from each other by contrast or in grayscale. That is acceptable
-only because they never share a canvas — a single-canvas Voltage/Current overlay
-is an explicit Issue #9 non-goal — and each carries its own name, unit and graph
-title. The ratio is recorded by the contrast suite so it cannot later be
-reinterpreted as a colour-only channel discriminator.
+not currently separate from each other by contrast or in grayscale. That is
+acceptable because they never share a canvas — a single-canvas Voltage/Current
+overlay is an explicit Issue #9 non-goal — and each carries its own name, unit
+and graph title, which is what the suite gates.
+
+Mutual channel contrast is **not** an invariant in either direction. The ratio is
+logged as diagnostic evidence only, so a future palette improvement that happens
+to separate the families can never fail the suite.
 
 Marker-to-marker and marker-to-waveform ratios are likewise recorded rather than
 gated: each mark clears 3:1 against the shared canvas ground, they are not

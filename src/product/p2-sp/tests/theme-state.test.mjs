@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import { studentPrimaryActionState } from "../presentation/student-view.js";
 import {
   THEME_MEDIA_QUERY,
   THEME_STATES,
@@ -16,6 +17,10 @@ const controllerSource = readFileSync(new URL("../presentation/theme-controller.
 const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const cssSource = readFileSync(new URL("../app.css", import.meta.url), "utf8");
 const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+const openDeployment = Object.freeze({ startAllowed: true });
+const blockedDeployment = Object.freeze({ startAllowed: false });
+const state = (controlState, pending = {}) => ({ controlState, startPending: false, stopPending: false, ...pending });
 
 /** Minimal prefers-color-scheme authority with a controllable system preference. */
 function fakeMedia(matches = false) {
@@ -183,8 +188,36 @@ test("interaction contract: native button, visible text, 44x44 minimum target", 
   assert.match(markup, />[^<]+</, "the control carries visible text");
   assert.match(cssSource, /button \{[^}]*min-width: 44px;[^}]*min-height: 44px;/);
   assert.match(cssSource, /\.theme-control button \{/);
-  // Secondary to the Student Start/Stop action: it is mounted after it.
-  assert.ok(appSource.indexOf("studentMarkup()") < appSource.indexOf("themeControlMarkup(theme.label)"));
+});
+
+test("the theme control leads the layout but stays visually secondary to Start/Stop", () => {
+  // N-01: mounted first so it is inside the initial 768x1024 portrait viewport,
+  // in both Student and Professional.
+  assert.ok(appSource.indexOf("themeControlMarkup(theme.label)") < appSource.indexOf("studentMarkup()"));
+  assert.equal((appSource.match(/themeControlMarkup\(theme\.label\)/g) ?? []).length, 2, "both mount branches carry the control");
+  // Hierarchy is carried by size and prominence, not by document order: the
+  // primary action is full width and taller, the theme control is compact.
+  assert.match(cssSource, /\.primary-action button \{ width: 100%; min-height: 52px; font-size: 1\.125rem; font-weight: 700;/);
+  assert.match(cssSource, /\.theme-control \{ display: flex; justify-content: flex-end;/);
+  assert.match(cssSource, /\.theme-control button \{ font-weight: 600; font-size: \.9375rem; \}/);
+  // The theme control is not part of the Student measurement markup, so it can
+  // never be confused for the measurement action.
+  const student = readFileSync(new URL("../presentation/student-view.js", import.meta.url), "utf8");
+  assert.doesNotMatch(student, /data-theme-toggle/);
+});
+
+test("the Stop role is derived from runtime state and consumes the Stop tokens", () => {
+  // B-01: the semantic action kind, not the localized label, drives presentation.
+  assert.equal(studentPrimaryActionState(state("STREAMING"), openDeployment, { inFlight: false }).kind, "stop");
+  assert.equal(studentPrimaryActionState(state("CLOSED"), openDeployment, { inFlight: false }).kind, "start");
+  assert.equal(studentPrimaryActionState(state("READY"), blockedDeployment, { inFlight: false }).kind, "disabled");
+  assert.equal(studentPrimaryActionState(state("READY"), openDeployment, { inFlight: true, operationKind: "stop" }).kind, "busy");
+  assert.equal(studentPrimaryActionState(state("READY", { startPending: true }), openDeployment, { inFlight: false }).kind, "busy");
+  assert.equal(studentPrimaryActionState(state("CONNECTED"), openDeployment, { inFlight: false }).kind, "busy");
+  assert.match(cssSource, /\.primary-action button\[data-action-kind="stop"\] \{ color: var\(--action-stop-text\); background: var\(--action-stop-surface\); border-color: var\(--action-stop-surface\); \}/);
+  assert.match(cssSource, /\.primary-action button\[data-action-kind="start"\] \{ color: var\(--action-primary-text\); background: var\(--action-primary-surface\)/);
+  assert.match(cssSource, /\.primary-action button\[data-action-kind="busy"\] \{ color: var\(--status-busy\)/);
+  assert.match(cssSource, /\.primary-action button\[data-action-kind="disabled"\] \{ color: var\(--surface\); background: var\(--status-disabled\)/);
 });
 
 test("stylesheet exposes system following, both overrides, focus and forced-colors", () => {

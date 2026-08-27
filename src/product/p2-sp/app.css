@@ -55,9 +55,13 @@ body { margin: 0; color: var(--text); background: var(--page); }
 main { max-width: 72rem; margin: auto; padding: 1rem; }
 header,.values,.actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
 .primary-action { margin-block: .75rem 1rem; }
-.primary-action button { width: 100%; min-height: 52px; font-size: 1.125rem; font-weight: 700; color: var(--action-primary-text); background: var(--action-primary-surface); border: 1px solid var(--action-primary-surface); border-radius: .375rem; }
-.primary-action button[aria-busy="true"] { color: var(--text); background: var(--surface); border-color: var(--border); }
-.primary-action button:disabled { color: var(--surface); background: var(--status-disabled); border-color: var(--status-disabled); }
+/* The semantic action role comes from studentPrimaryActionState().kind, which is
+   derived from runtime state -- never from the localized label text. */
+.primary-action button { width: 100%; min-height: 52px; font-size: 1.125rem; font-weight: 700; border-radius: .375rem; color: var(--action-primary-text); background: var(--action-primary-surface); border: 1px solid var(--action-primary-surface); }
+.primary-action button[data-action-kind="start"] { color: var(--action-primary-text); background: var(--action-primary-surface); border-color: var(--action-primary-surface); }
+.primary-action button[data-action-kind="stop"] { color: var(--action-stop-text); background: var(--action-stop-surface); border-color: var(--action-stop-surface); }
+.primary-action button[data-action-kind="busy"] { color: var(--status-busy); background: var(--surface); border-color: var(--status-busy); }
+.primary-action button[data-action-kind="disabled"] { color: var(--surface); background: var(--status-disabled); border-color: var(--status-disabled); }
 .values output,.graphs section,.professional { background: var(--surface); border: 1px solid var(--border); border-radius: .5rem; padding: 1rem; }
 .values output { flex: 1 1 16rem; font-size: 1.25rem; }
 .values output[data-value-panel="voltage"] { border-inline-start: 4px solid var(--measure-voltage); }
@@ -69,8 +73,11 @@ header,.values,.actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items
 .graph-panel canvas { display: block; width: 100%; height: 18rem; background: var(--graph-background); }
 button { min-width: 44px; min-height: 44px; padding: .5rem .9rem; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
 button:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2px; box-shadow: 0 0 0 6px var(--focus-outer); }
-.theme-control { margin-block: .75rem; }
-.theme-control button { font-weight: 600; }
+/* Mounted first so it is inside the initial viewport at 768x1024 portrait. It
+   stays visually secondary: compact and right-aligned, against a full-width
+   52px primary action. */
+.theme-control { display: flex; justify-content: flex-end; margin-block: 0 .5rem; }
+.theme-control button { font-weight: 600; font-size: .9375rem; }
 .quality,.error,.deployment { border-inline-start: 4px solid var(--focus-inner); padding-inline-start: .5rem; color: var(--text); }
 .quality { color: var(--text-muted); }
 .error:not(:empty) { color: var(--status-recoverable); border-inline-start-color: var(--status-recoverable); }
@@ -98,7 +105,7 @@ select { min-height: 44px; color: var(--text); background: var(--surface); borde
    the authored tokens above. */
 @media (forced-colors: active) {
   .values output,.graphs section,.professional,button,select { border: 1px solid CanvasText; forced-color-adjust: auto; }
-  .primary-action button,.primary-action button:disabled,.primary-action button[aria-busy="true"] { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
+  .primary-action button,.primary-action button[data-action-kind] { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
   button:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; box-shadow: none; }
   .quality,.error,.deployment { color: CanvasText; border-inline-start-color: CanvasText; }
   .deployment[data-deployment-status="matched"],.deployment[data-deployment-status="unknown"],.deployment[data-deployment-status="mismatched"],.error:not(:empty) { color: CanvasText; border-inline-start-color: CanvasText; }

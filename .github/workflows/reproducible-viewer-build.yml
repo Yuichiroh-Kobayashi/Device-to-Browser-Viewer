@@ -1,0 +1,163 @@
+name: Reproducible Viewer build
+
+on:
+  push:
+    branches:
+      - chore/reproducible-viewer-build-env-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reproducible-viewer-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Qualify Build Environment V1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out infrastructure authority
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify tracked provenance and scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/build-env/verify.py provenance
+          python3 -m py_compile tools/build-env/verify.py
+          sh -n tools/build-env/inventory.sh
+          sh -n tools/build-env/run-product-repro.sh
+          test "$(sha256sum tools/p2-builder/p2-builder.py | cut -d' ' -f1)" = \
+            616e1e4aff16d21b49f4d0b8f3c8bda46a5f47ad09d4a2eb9a0b0227ca06c5aa
+
+      - name: Build Candidate A without cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="viewer-build-env-v1:${GITHUB_SHA}"
+          docker build \
+            --no-cache \
+            --pull=false \
+            --platform linux/amd64 \
+            --provenance=false \
+            --tag "$image" \
+            --file tools/build-env/Dockerfile \
+            .
+          printf 'VIEWER_BUILD_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
+          docker image inspect --format '{{.Id}}' "$image"
+
+      - name: Verify toolchain identity and retain full package inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/repro-build-evidence"
+          mkdir -p "$evidence/toolchain"
+          docker run --rm \
+            --platform linux/amd64 \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --volume "$GITHUB_WORKSPACE/tools/build-env/inventory.sh:/inventory.sh:ro" \
+            "$VIEWER_BUILD_IMAGE" \
+            sh /inventory.sh \
+            | tee "$evidence/toolchain/inventory.txt"
+          python3 tools/build-env/verify.py inventory \
+            "$evidence/toolchain/inventory.txt"
+
+      - name: Run exact historical beta.1 oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/repro-build-evidence/beta1"
+          tools/build-env/run-product-repro.sh \
+            "$VIEWER_BUILD_IMAGE" \
+            "$GITHUB_WORKSPACE" \
+            "$evidence" \
+            historical \
+            | tee "$RUNNER_TEMP/beta1-run.txt"
+          grep -F '"result": "PASS"' \
+            "$evidence"/*/verification-summary.json
+
+      - name: Prepare exact PR 11 and PR 12 source authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr11=ad92cf8a7fda9d5c4d46ffb9253ae6d384eba010
+          pr11_tree=027de66229a77248d66d744ea9b98b7e15033f35
+          pr12=e877493341dee244deaf5e6ad0ed9b34a0296e93
+          pr12_tree=6aea1545df27025c02f8c9f1bf937b39e9098d28
+
+          git clone --no-local "$GITHUB_WORKSPACE" "$RUNNER_TEMP/viewer-pr11"
+          git -C "$RUNNER_TEMP/viewer-pr11" checkout --detach "$pr11"
+          test "$(git -C "$RUNNER_TEMP/viewer-pr11" rev-parse HEAD)" = "$pr11"
+          test "$(git -C "$RUNNER_TEMP/viewer-pr11" rev-parse 'HEAD^{tree}')" = "$pr11_tree"
+          test -z "$(git -C "$RUNNER_TEMP/viewer-pr11" status --porcelain=v1 -uall)"
+
+          git init "$RUNNER_TEMP/viewer-pr12"
+          git -C "$RUNNER_TEMP/viewer-pr12" remote add origin \
+            "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$RUNNER_TEMP/viewer-pr12" fetch --no-tags origin refs/pull/12/head
+          test "$(git -C "$RUNNER_TEMP/viewer-pr12" rev-parse FETCH_HEAD)" = "$pr12"
+          git -C "$RUNNER_TEMP/viewer-pr12" checkout --detach "$pr12"
+          test "$(git -C "$RUNNER_TEMP/viewer-pr12" rev-parse HEAD)" = "$pr12"
+          test "$(git -C "$RUNNER_TEMP/viewer-pr12" rev-parse 'HEAD^{tree}')" = "$pr12_tree"
+          test -z "$(git -C "$RUNNER_TEMP/viewer-pr12" status --porcelain=v1 -uall)"
+
+      - name: Verify final PR 11 continuity
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/repro-build-evidence/pr11"
+          tools/build-env/run-product-repro.sh \
+            "$VIEWER_BUILD_IMAGE" \
+            "$RUNNER_TEMP/viewer-pr11" \
+            "$evidence" \
+            current \
+            | tee "$RUNNER_TEMP/pr11-run.txt"
+          summary=$(find "$evidence" -mindepth 2 -maxdepth 2 \
+            -type f -name current-product-summary.json -print)
+          python3 tools/build-env/verify.py summary pr11 "$summary"
+
+      - name: Build and verify exact PR 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/repro-build-evidence/pr12"
+          tools/build-env/run-product-repro.sh \
+            "$VIEWER_BUILD_IMAGE" \
+            "$RUNNER_TEMP/viewer-pr12" \
+            "$evidence" \
+            current \
+            | tee "$RUNNER_TEMP/pr12-run.txt"
+          summary=$(find "$evidence" -mindepth 2 -maxdepth 2 \
+            -type f -name current-product-summary.json -print)
+          python3 tools/build-env/verify.py summary pr12 "$summary" \
+            | tee "$RUNNER_TEMP/pr12-verified-summary.txt"
+
+      - name: Seal CI evidence inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/repro-build-evidence"
+          cp "$RUNNER_TEMP/beta1-run.txt" "$evidence/beta1-run.txt"
+          cp "$RUNNER_TEMP/pr11-run.txt" "$evidence/pr11-run.txt"
+          cp "$RUNNER_TEMP/pr12-run.txt" "$evidence/pr12-run.txt"
+          cp "$RUNNER_TEMP/pr12-verified-summary.txt" \
+            "$evidence/pr12-verified-summary.txt"
+          (
+            cd "$evidence"
+            find . -type f ! -name SHA256SUMS -print0 \
+              | LC_ALL=C sort -z \
+              | xargs -0 sha256sum > SHA256SUMS
+            sha256sum -c SHA256SUMS
+            cat SHA256SUMS
+          )
+          printf '%s\n' 'REPRO_BUILD_CI_PASS' | tee -a "$GITHUB_STEP_SUMMARY"

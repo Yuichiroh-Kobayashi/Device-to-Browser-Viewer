@@ -65,3 +65,35 @@ later manual qualification. The workflow has read-only repository permission,
 does not use Docker cache as provenance, fetches exact PR #12 authority, and
 re-runs the historical, PR #11, and PR #12 gates before emitting a summary.
 It does not merge, release, tag, update PR #12, or publish Viewer assets.
+
+## CI review evidence artifact
+
+After every qualification gate and the runner-local evidence checksum gate
+passes, CI stages a compact review package and uploads exactly one artifact
+named `viewer-repro-build-evidence-RUN_ID`. The artifact retains the run and
+container authority, complete toolchain inventory, historical beta.1 summary,
+PR #11 summary, PR #12 summary and exact served representations, relevant
+result logs, and a `SHA256SUMS` covering every retained file.
+
+The explicit retention period is 30 days. GitHub Actions Artifact storage is
+evidence transport for external review, not permanent archival storage. The
+GitHub-generated ZIP digest is also not the Viewer bundle authority. Authority
+remains separated as follows:
+
+- GitHub Actions Artifact: evidence transport and retention;
+- internal `SHA256SUMS`: artifact-content integrity;
+- tracked `build-environment-v1.json`: expected authority;
+- exact files under `pr12/served/`: built-byte authority.
+
+An authorized external reviewer can download and verify a run with:
+
+~~~sh
+gh run download RUN_ID \
+  --name viewer-repro-build-evidence-RUN_ID \
+  --dir viewer-repro-build-evidence-RUN_ID
+cd viewer-repro-build-evidence-RUN_ID
+sha256sum -c SHA256SUMS
+~~~
+
+The local immutable qualification evidence remains a separate authority and is
+not replaced by the retained GitHub artifact.

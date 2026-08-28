@@ -51,7 +51,9 @@ jobs:
             --file tools/build-env/Dockerfile \
             .
           printf 'VIEWER_BUILD_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
-          docker image inspect --format '{{.Id}}' "$image"
+          image_id=$(docker image inspect --format '{{.Id}}' "$image")
+          printf 'VIEWER_BUILD_IMAGE_ID=%s\n' "$image_id" >> "$GITHUB_ENV"
+          printf '%s\n' "$image_id"
 
       - name: Verify toolchain identity and retain full package inventory
         shell: bash
@@ -124,7 +126,8 @@ jobs:
             | tee "$RUNNER_TEMP/pr11-run.txt"
           summary=$(find "$evidence" -mindepth 2 -maxdepth 2 \
             -type f -name current-product-summary.json -print)
-          python3 tools/build-env/verify.py summary pr11 "$summary"
+          python3 tools/build-env/verify.py summary pr11 "$summary" \
+            | tee "$RUNNER_TEMP/pr11-verified-summary.txt"
 
       - name: Build and verify exact PR 12
         shell: bash
@@ -150,6 +153,8 @@ jobs:
           cp "$RUNNER_TEMP/beta1-run.txt" "$evidence/beta1-run.txt"
           cp "$RUNNER_TEMP/pr11-run.txt" "$evidence/pr11-run.txt"
           cp "$RUNNER_TEMP/pr12-run.txt" "$evidence/pr12-run.txt"
+          cp "$RUNNER_TEMP/pr11-verified-summary.txt" \
+            "$evidence/pr11-verified-summary.txt"
           cp "$RUNNER_TEMP/pr12-verified-summary.txt" \
             "$evidence/pr12-verified-summary.txt"
           (
@@ -160,4 +165,53 @@ jobs:
             sha256sum -c SHA256SUMS
             cat SHA256SUMS
           )
+          printf '%s\n' 'REPRO_BUILD_CI_EVIDENCE_SEAL_PASS'
+
+      - name: Stage compact CI review evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/repro-build-artifact"
+          python3 tools/build-env/stage-ci-evidence.py \
+            --evidence-root "$RUNNER_TEMP/repro-build-evidence" \
+            --output "$artifact" \
+            --repository "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --workflow "$GITHUB_WORKFLOW" \
+            --head-sha "$GITHUB_SHA" \
+            --image-id "$VIEWER_BUILD_IMAGE_ID"
+          (
+            cd "$artifact"
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Upload compact CI review evidence
+        id: upload-evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: viewer-repro-build-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/repro-build-artifact
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Record persisted evidence result
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.upload-evidence.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload-evidence.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.upload-evidence.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_ID"
+          test -n "$ARTIFACT_URL"
+          test -n "$ARTIFACT_DIGEST"
+          printf 'artifact_name=%s\n' "viewer-repro-build-evidence-${GITHUB_RUN_ID}"
+          printf 'artifact_id=%s\n' "$ARTIFACT_ID"
+          printf 'artifact_retention_days=30\n'
+          printf 'artifact_transport_digest=%s\n' "$ARTIFACT_DIGEST"
           printf '%s\n' 'REPRO_BUILD_CI_PASS' | tee -a "$GITHUB_STEP_SUMMARY"

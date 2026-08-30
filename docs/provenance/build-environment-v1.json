@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "build_environment": {
+    "name": "Viewer Build Environment V1",
+    "classification": "NEW REPRODUCIBLE BASELINE",
+    "historical_original_environment": "PARTIALLY UNKNOWN",
+    "historical_output_equivalent": true,
+    "base_image": "ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517",
+    "dockerfile_sha256": "82a5232eeb2110789c03ef5797067278733ffccefccfd65d6e6d50b5cbc6aff8",
+    "qualified_image_digest": "sha256:755023019864d9919e890003da7117bfc2803c88c80c2ab001d40cb1f0249b19",
+    "architecture": "linux/amd64"
+  },
+  "toolchain": {
+    "base_image": "ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517",
+    "architecture": "x86_64",
+    "node_path": "/usr/bin/node",
+    "node_realpath": "/usr/bin/node",
+    "node_version": "v18.19.1",
+    "webpack_version": "5.76.1",
+    "webpack_package": "/usr/share/nodejs/webpack/package.json",
+    "webpack_resolve": "/usr/share/nodejs/webpack/lib/index.js",
+    "terser-webpack-plugin_version": "5.3.7",
+    "terser-webpack-plugin_package": "/usr/share/nodejs/terser-webpack-plugin/package.json",
+    "terser-webpack-plugin_resolve": "/usr/share/nodejs/terser-webpack-plugin/dist/index.js",
+    "terser_version": "5.19.2",
+    "terser_package": "/usr/share/nodejs/terser/package.json",
+    "terser_resolve": "/usr/share/nodejs/terser/dist/bundle.min.cjs",
+    "python_version": "Python 3.12.3",
+    "git_version": "git version 2.43.0"
+  },
+  "relevant_dpkg_packages": {
+    "ca-certificates": {
+      "version": "20260601~24.04.1",
+      "architecture": "all"
+    },
+    "git": {
+      "version": "1:2.43.0-1ubuntu7.3",
+      "architecture": "amd64"
+    },
+    "nodejs": {
+      "version": "18.19.1+dfsg-6ubuntu5",
+      "architecture": "amd64"
+    },
+    "python3": {
+      "version": "3.12.3-0ubuntu2.1",
+      "architecture": "amd64"
+    },
+    "webpack": {
+      "version": "5.76.1+dfsg1+~cs17.16.16-1",
+      "architecture": "all"
+    }
+  },
+  "historical_beta1": {
+    "result": "PASS",
+    "viewer_bundle_id": "cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5"
+  },
+  "pr11": {
+    "continuity": "PASS",
+    "source": {
+      "commit": "ad92cf8a7fda9d5c4d46ffb9253ae6d384eba010",
+      "tree": "027de66229a77248d66d744ea9b98b7e15033f35"
+    },
+    "d2b_reference_tree_oid": "6e5b4844548c1355dea7e5cbbcb1200c9d2335fd",
+    "recovered_builder_sha256": "616e1e4aff16d21b49f4d0b8f3c8bda46a5f47ad09d4a2eb9a0b0227ca06c5aa",
+    "product": {
+      "bundle_id": "fbe7f2a9033e8f957d0460ec8ff929298e2073de3e292037846237cab6422701",
+      "index": {
+        "bytes": 573,
+        "path": "index.html",
+        "sha256": "d19182296e250e4eb5443eabcdb6a9ad1cf67ffae90b51bb25f27995579d6039"
+      },
+      "manifest": {
+        "bytes": 1363,
+        "path": "asset-manifest.json",
+        "sha256": "fbe7f2a9033e8f957d0460ec8ff929298e2073de3e292037846237cab6422701"
+      },
+      "css_gzip": {
+        "bytes": 830,
+        "path": "app.1fbcc3ae1fca202d5e3e4858cc74d5a9d4b07d18f921c7fe0981e1c08fa9a741.css.gz",
+        "sha256": "1fbcc3ae1fca202d5e3e4858cc74d5a9d4b07d18f921c7fe0981e1c08fa9a741"
+      },
+      "js_gzip": {
+        "bytes": 24958,
+        "path": "app.aac86498c7bb562a9a111bb501be5f4585336f0c153ce809007c2a2b7efe505d.js.gz",
+        "sha256": "aac86498c7bb562a9a111bb501be5f4585336f0c153ce809007c2a2b7efe505d"
+      },
+      "stored_bytes": 27724,
+      "two_run_determinism": "PASS"
+    }
+  },
+  "pr12": {
+    "source": {
+      "commit": "e1ebdb1cde8585a37447a66f4c8183654f4c3cda",
+      "tree": "8f8426e9af1649f68e66e4f8f432d1b91452e38d"
+    },
+    "d2b_reference_tree_oid": "6e5b4844548c1355dea7e5cbbcb1200c9d2335fd",
+    "recovered_builder_sha256": "616e1e4aff16d21b49f4d0b8f3c8bda46a5f47ad09d4a2eb9a0b0227ca06c5aa",
+    "product": {
+      "bundle_id": "4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af",
+      "index": {
+        "bytes": 573,
+        "path": "index.html",
+        "sha256": "88c39f443ef49d477d558f86dfd4b02345ed49e5a0d1123ce92538b7dafc54b7"
+      },
+      "manifest": {
+        "bytes": 1364,
+        "path": "asset-manifest.json",
+        "sha256": "4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af"
+      },
+      "css_gzip": {
+        "bytes": 2385,
+        "path": "app.250905db503bf774bcab87f29e44ceddd63c949e798cc72c55864b933a8cfafb.css.gz",
+        "sha256": "250905db503bf774bcab87f29e44ceddd63c949e798cc72c55864b933a8cfafb"
+      },
+      "js_gzip": {
+        "bytes": 25809,
+        "path": "app.46bafb3d23345cd8dc48533c4c59c595ef6b0ae5cf051158dae509a20f56cbe4.js.gz",
+        "sha256": "46bafb3d23345cd8dc48533c4c59c595ef6b0ae5cf051158dae509a20f56cbe4"
+      },
+      "stored_bytes": 30131,
+      "two_run_determinism": "PASS"
+    }
+  }
+}

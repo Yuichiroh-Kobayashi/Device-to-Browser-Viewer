@@ -94,8 +94,8 @@ jobs:
           set -euo pipefail
           pr11=ad92cf8a7fda9d5c4d46ffb9253ae6d384eba010
           pr11_tree=027de66229a77248d66d744ea9b98b7e15033f35
-          pr12=e877493341dee244deaf5e6ad0ed9b34a0296e93
-          pr12_tree=6aea1545df27025c02f8c9f1bf937b39e9098d28
+          pr12=e1ebdb1cde8585a37447a66f4c8183654f4c3cda
+          pr12_tree=8f8426e9af1649f68e66e4f8f432d1b91452e38d
 
           git clone --no-local "$GITHUB_WORKSPACE" "$RUNNER_TEMP/viewer-pr11"
           git -C "$RUNNER_TEMP/viewer-pr11" checkout --detach "$pr11"

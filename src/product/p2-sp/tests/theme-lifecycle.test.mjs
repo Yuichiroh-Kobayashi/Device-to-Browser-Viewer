@@ -201,8 +201,9 @@ test("a fresh application mounts in system state and follows the browser prefere
   const dark = buildApplication({ systemPrefersDark: true });
   assert.equal(dark.application.theme.effective, "dark");
   assert.equal(documentElement.attributes["data-effective-theme"], "dark");
-  // The mounted control offers the opposite theme.
-  assert.match(dark.root.innerHTML, /data-theme-toggle>ライト表示 \/ Light mode</);
+  // The mounted control offers the opposite theme, written to the label node
+  // beside the (untouched) icon node, not to the button's own textContent.
+  assert.match(dark.root.innerHTML, /data-theme-toggle-label>ライト表示 \/ Light mode</);
   dark.application.destroy();
 });
 
@@ -210,14 +211,22 @@ test("clicking the mounted control alternates the theme and repaints without rem
   const { root, frames, application } = buildApplication({ systemPrefersDark: false });
   frames.flush();
   const button = root.querySelector("[data-theme-toggle]");
+  const icon = button.children[0];
+  const label = root.querySelector("[data-theme-toggle-label]");
   const canvas = root.querySelector('[data-waveform="voltage"]');
   assert.equal(button.tag, "button");
   assert.equal(button.attributes.type, "button");
+  assert.equal(icon.attributes["aria-hidden"], "true", "the decorative icon node must be aria-hidden");
 
   button.onclick();
   assert.equal(application.theme.state, "dark");
-  assert.equal(button.textContent, "ライト表示 / Light mode");
+  // Only the label node is rewritten; the icon node beside it is never
+  // replaced by a theme change (a whole-button textContent write would have
+  // destroyed it).
+  assert.equal(label.textContent, "ライト表示 / Light mode");
   assert.strictEqual(root.querySelector("[data-theme-toggle]"), button, "the control node must be relabelled, not replaced");
+  assert.strictEqual(root.querySelector("[data-theme-toggle-label]"), label, "the label node must be relabelled, not replaced");
+  assert.strictEqual(button.children[0], icon, "the icon node must survive a theme change");
   assert.strictEqual(root.querySelector('[data-waveform="voltage"]'), canvas, "a theme change must not remount the canvas");
   assert.equal(frames.pending, 1, "a theme change schedules exactly one repaint");
   frames.flush();
@@ -225,7 +234,8 @@ test("clicking the mounted control alternates the theme and repaints without rem
 
   button.onclick();
   assert.equal(application.theme.state, "light");
-  assert.equal(button.textContent, "ダーク表示 / Dark mode");
+  assert.equal(label.textContent, "ダーク表示 / Dark mode");
+  assert.strictEqual(button.children[0], icon, "the icon node must survive a second theme change");
   button.onclick();
   assert.equal(application.theme.state, "dark");
   frames.flush();
@@ -285,16 +295,18 @@ test("live-frame updates never replace the mounted theme control", async () => {
   await driveToStreaming(owner);
   frames.flush();
   const button = root.querySelector("[data-theme-toggle]");
+  const label = root.querySelector("[data-theme-toggle-label]");
   button.onclick();
   frames.flush();
-  const labelAfterToggle = button.textContent;
+  const labelAfterToggle = label.textContent;
 
   for (let sequence = 2n; sequence < 40n; sequence += 1n) {
     sockets.at(-1).driveMessage(makeViFrame({ streamId: 7, sequence, timestampUs: sequence * 1000n, flags: 1, voltage: 3.3, current: 0.12 }));
   }
   frames.flush();
   assert.strictEqual(root.querySelector("[data-theme-toggle]"), button, "live frames replaced the theme control node");
-  assert.equal(button.textContent, labelAfterToggle, "live frames changed the theme control label");
+  assert.strictEqual(root.querySelector("[data-theme-toggle-label]"), label, "live frames replaced the theme label node");
+  assert.equal(label.textContent, labelAfterToggle, "live frames changed the theme control label");
   assert.equal(application.theme.state, "dark");
   assert.equal(documentElement.attributes["data-effective-theme"], "dark");
   application.destroy();
@@ -336,19 +348,20 @@ test("a system preference change during streaming re-themes without touching the
   frames.flush();
   const before = runtimeFingerprint(owner);
   const button = root.querySelector("[data-theme-toggle]");
+  const label = root.querySelector("[data-theme-toggle-label]");
 
   media.setSystemPrefersDark(true);
   assert.equal(application.theme.state, "system", "following the system must not become an explicit override");
   assert.equal(application.theme.effective, "dark");
   assert.equal(documentElement.attributes["data-effective-theme"], "dark");
-  assert.equal(button.textContent, "ライト表示 / Light mode");
+  assert.equal(label.textContent, "ライト表示 / Light mode");
   assert.strictEqual(root.querySelector("[data-theme-toggle]"), button);
   frames.flush();
   assert.deepEqual(runtimeFingerprint(owner), before, "a system preference change moved runtime state");
 
   media.setSystemPrefersDark(false);
   assert.equal(application.theme.effective, "light");
-  assert.equal(button.textContent, "ダーク表示 / Dark mode");
+  assert.equal(label.textContent, "ダーク表示 / Dark mode");
   frames.flush();
   application.destroy();
 });

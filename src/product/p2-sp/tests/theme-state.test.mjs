@@ -128,7 +128,7 @@ test("the control offers the theme the learner would move to", () => {
   const media = fakeMedia(false);
   const theme = createThemeController({ media, root: fakeRoot() });
   assert.equal(theme.label, "ダーク表示 / Dark mode");
-  assert.match(themeControlMarkup(theme.label), /<button type="button" data-theme-toggle>ダーク表示 \/ Dark mode<\/button>/);
+  assert.match(themeControlMarkup(theme.label), /<button type="button" class="theme-toggle" data-theme-toggle><span class="theme-toggle-icon" aria-hidden="true"><\/span><span data-theme-toggle-label>ダーク表示 \/ Dark mode<\/span><\/button>/);
   theme.toggle();
   assert.equal(theme.label, "ライト表示 / Light mode");
   assert.match(themeControlMarkup(theme.label), /ライト表示 \/ Light mode/);
@@ -174,7 +174,9 @@ test("the application owns one theme controller and never rebuilds it per view",
   // A theme change relabels the mounted control and repaints; it never remounts.
   assert.match(appSource, /theme\.subscribe\(\(\) => \{ syncThemeControl\(\); waveformRender\.request\(\); \}\)/);
   assert.doesNotMatch(appSource, /theme\.subscribe\([^)]*presentation\.setMode/);
-  assert.match(appSource, /themeButton\.textContent = theme\.label;/);
+  // A theme change writes only the label node, never the whole button's
+  // textContent, so a nested icon node is never destroyed by a toggle.
+  assert.match(appSource, /themeLabel\.textContent = theme\.label;/);
   assert.match(appSource, /theme\.dispose\(\);/);
 });
 
@@ -187,23 +189,31 @@ test("interaction contract: native button, visible text, 44x44 minimum target", 
   assert.doesNotMatch(appSource, /keydown|keypress|pointerdown|touchstart/i);
   assert.match(markup, />[^<]+</, "the control carries visible text");
   assert.match(cssSource, /button \{[^}]*min-width: 44px;[^}]*min-height: 44px;/);
-  assert.match(cssSource, /\.theme-control button \{/);
+  assert.match(cssSource, /\.theme-toggle \{/);
 });
 
-test("the theme control leads the layout but stays visually secondary to Start/Stop", () => {
-  // N-01: mounted first so it is inside the initial 768x1024 portrait viewport,
-  // in both Student and Professional.
-  assert.ok(appSource.indexOf("themeControlMarkup(theme.label)") < appSource.indexOf("studentMarkup()"));
-  assert.equal((appSource.match(/themeControlMarkup\(theme\.label\)/g) ?? []).length, 2, "both mount branches carry the control");
+test("the theme control sits inside the shared measurement header and stays visually secondary to Start/Stop", () => {
+  // N-01 superseded by the physical-review UI polish: mounting the theme
+  // control as its own full-flow row ahead of the workspace visibly pushed
+  // the whole measurement workspace down a row on physical iPad Safari. It is
+  // now part of the measurement header itself (shared by Student and
+  // Professional through measurement-workspace.js), the header's trailing
+  // flex child, rather than a document-level sibling app.js assembled
+  // separately ahead of studentMarkup()/professionalMarkup().
+  const workspaceSource = readFileSync(new URL("../presentation/measurement-workspace.js", import.meta.url), "utf8");
+  assert.match(workspaceSource, /<header>.*\$\{themeControlMarkup\(themeLabel\)\}<\/header>/, "the theme control must be the header's own trailing content, not a block ahead of it");
+  assert.equal((workspaceSource.match(/themeControlMarkup\(/g) ?? []).length, 1, "one shared call site serves both Student and Professional");
   // Hierarchy is carried by size and prominence, not by document order: the
-  // primary action is full width and taller, the theme control is compact.
+  // primary action is full width and taller, the theme control is compact and
+  // right-aligned within the flex header (margin-inline-start: auto), so it
+  // never reserves a dedicated row of its own.
   assert.match(cssSource, /\.primary-action button \{ width: 100%; min-height: 52px; font-size: 1\.125rem; font-weight: 700;/);
-  assert.match(cssSource, /\.theme-control \{ display: flex; justify-content: flex-end;/);
-  assert.match(cssSource, /\.theme-control button \{ font-weight: 600; font-size: \.9375rem; \}/);
-  // The theme control is not part of the Student measurement markup, so it can
-  // never be confused for the measurement action.
+  assert.match(cssSource, /\.theme-toggle \{ margin-inline-start: auto;[^}]*font-weight: 600; font-size: \.9375rem; \}/);
+  // The control is part of the one shared measurement workspace now, so it is
+  // legitimately present wherever that workspace is used -- Student included.
   const student = readFileSync(new URL("../presentation/student-view.js", import.meta.url), "utf8");
-  assert.doesNotMatch(student, /data-theme-toggle/);
+  assert.doesNotMatch(student, /data-theme-toggle/, "student-view.js is a thin wrapper; the control markup itself lives in theme-controller.js");
+  assert.match(workspaceSource, /themeControlMarkup\(themeLabel\)/, "the shared workspace must embed the theme control in its header");
 });
 
 test("the Stop role is derived from runtime state and consumes the Stop tokens", () => {

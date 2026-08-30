@@ -63,7 +63,7 @@ const DARK_OVERRIDE = tokens(block(/:root\[data-theme="dark"\] \{\s*color-scheme
  */
 const REQUIRED_PAIRS = Object.freeze([
   // Page and panel chrome.
-  ["text", "surface", TEXT_MINIMUM, "body text inside a panel (.values output / .graphs section / .professional)"],
+  ["text", "surface", TEXT_MINIMUM, "body text inside a panel (.values output / .graphs section / .professional-diagnostics)"],
   ["text", "page", TEXT_MINIMUM, "body text directly on the page background"],
   ["text-muted", "surface", TEXT_MINIMUM, "quality line text on a panel"],
   ["text-muted", "page", TEXT_MINIMUM, "quality line text on the page"],
@@ -253,9 +253,12 @@ test("every active role is actually consumed by a rule or by the renderer", () =
     assert.ok(resolvedGraphRoles.has(role), `the renderer never resolves --graph-${role} (resolved: ${[...resolvedGraphRoles].join(", ")})`);
   }
   // The Stop role must be reachable from runtime state, not from label text.
-  const studentView = readFileSync(new URL("../presentation/student-view.js", import.meta.url), "utf8");
-  assert.match(studentView, /controlState === "STREAMING"\) return Object\.freeze\(\{ enabled: true, busy: false, kind: "stop"/);
-  assert.match(studentView, /button\.dataset\.actionKind = primaryState\.kind;/);
+  // studentPrimaryActionState and the button update now live in the shared
+  // measurement workspace (Student and Professional both drive the Stop role
+  // from the same runtime state, not from a per-view copy).
+  const workspaceView = readFileSync(new URL("../presentation/measurement-workspace.js", import.meta.url), "utf8");
+  assert.match(workspaceView, /controlState === "STREAMING"\) return Object\.freeze\(\{ enabled: true, busy: false, kind: "stop"/);
+  assert.match(workspaceView, /button\.dataset\.actionKind = primaryState\.kind;/);
   assert.match(rules, /\.primary-action button\[data-action-kind="stop"\] \{ color: var\(--action-stop-text\); background: var\(--action-stop-surface\)/);
   assert.doesNotMatch(rules, /測定終了|Stop"\]/, "presentation must not key off localized label text");
 });
@@ -298,14 +301,15 @@ test("channel identity never depends on colour alone", () => {
     const ratio = contrastRatio(table.get("graph-voltage-accent"), table.get("graph-current-accent"));
     console.log(`INFO ${themeName} Voltage vs Current = ${ratio.toFixed(2)}:1 — diagnostic only, not gated in either direction`);
   }
-  // The required, gated identity carriers:
-  const student = readFileSync(new URL("../presentation/student-view.js", import.meta.url), "utf8");
-  assert.match(student, /電圧 Voltage/, "Voltage needs a visible channel name");
-  assert.match(student, /電流 Current/, "Current needs a visible channel name");
-  assert.match(student, /aria-label="Voltage graph"/, "Voltage needs its own labelled panel");
-  assert.match(student, /aria-label="Current graph"/, "Current needs its own labelled panel");
-  assert.match(student, /data-graph-panel="voltage"/);
-  assert.match(student, /data-graph-panel="current"/);
+  // The required, gated identity carriers: now drawn once by the shared
+  // measurement workspace, which both Student and Professional mount.
+  const workspace = readFileSync(new URL("../presentation/measurement-workspace.js", import.meta.url), "utf8");
+  assert.match(workspace, /電圧 Voltage/, "Voltage needs a visible channel name");
+  assert.match(workspace, /電流 Current/, "Current needs a visible channel name");
+  assert.match(workspace, /aria-label="Voltage graph"/, "Voltage needs its own labelled panel");
+  assert.match(workspace, /aria-label="Current graph"/, "Current needs its own labelled panel");
+  assert.match(workspace, /data-graph-panel="voltage"/);
+  assert.match(workspace, /data-graph-panel="current"/);
   const renderer = readFileSync(new URL("../graph/waveform-canvas.js", import.meta.url), "utf8");
   // Title and unit are drawn onto each canvas.
   assert.match(renderer, /fillText\(`\$\{this\.title\} \(\$\{this\.unit\}\)`/);

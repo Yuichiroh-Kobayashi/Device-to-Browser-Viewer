@@ -62,7 +62,7 @@ header,.values,.actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items
 .primary-action button[data-action-kind="stop"] { color: var(--action-stop-text); background: var(--action-stop-surface); border-color: var(--action-stop-surface); }
 .primary-action button[data-action-kind="busy"] { color: var(--status-busy); background: var(--surface); border-color: var(--status-busy); }
 .primary-action button[data-action-kind="disabled"] { color: var(--surface); background: var(--status-disabled); border-color: var(--status-disabled); }
-.values output,.graphs section,.professional { background: var(--surface); border: 1px solid var(--border); border-radius: .5rem; padding: 1rem; }
+.values output,.graphs section,.professional-diagnostics { background: var(--surface); border: 1px solid var(--border); border-radius: .5rem; padding: 1rem; }
 .values output { flex: 1 1 16rem; font-size: 1.25rem; }
 .values output[data-value-panel="voltage"] { border-inline-start: 4px solid var(--measure-voltage); }
 .values output[data-value-panel="current"] { border-inline-start: 4px solid var(--measure-current); }
@@ -73,11 +73,14 @@ header,.values,.actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items
 .graph-panel canvas { display: block; width: 100%; height: 18rem; background: var(--graph-background); }
 button { min-width: 44px; min-height: 44px; padding: .5rem .9rem; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
 button:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2px; box-shadow: 0 0 0 6px var(--focus-outer); }
-/* Mounted first so it is inside the initial viewport at 768x1024 portrait. It
-   stays visually secondary: compact and right-aligned, against a full-width
-   52px primary action. */
-.theme-control { display: flex; justify-content: flex-end; margin-block: 0 .5rem; }
-.theme-control button { font-weight: 600; font-size: .9375rem; }
+/* Part of the measurement header row rather than a standalone block, so it
+   never pushes the workspace down a full row on its own (physical iPad
+   review). The header is already a flex row; margin-inline-start: auto pushes
+   the control to the row's trailing edge while letting it wrap under the
+   title on narrow widths. It stays visually secondary: compact, against a
+   full-width 52px primary action. */
+.theme-toggle { margin-inline-start: auto; display: inline-flex; align-items: center; gap: .4em; font-weight: 600; font-size: .9375rem; }
+.theme-toggle-icon { width: 1em; height: 1em; flex: none; border-radius: 50%; border: 1.5px solid currentColor; background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
 .quality,.error,.deployment { border-inline-start: 4px solid var(--focus-inner); padding-inline-start: .5rem; color: var(--text); }
 .quality { color: var(--text-muted); }
 .error:not(:empty) { color: var(--status-recoverable); border-inline-start-color: var(--status-recoverable); }
@@ -104,7 +107,7 @@ select { min-height: 44px; color: var(--text); background: var(--surface); borde
    system-drawn focus cue, so Windows/Edge high-contrast users never depend on
    the authored tokens above. */
 @media (forced-colors: active) {
-  .values output,.graphs section,.professional,button,select { border: 1px solid CanvasText; forced-color-adjust: auto; }
+  .values output,.graphs section,.professional-diagnostics,button,select { border: 1px solid CanvasText; forced-color-adjust: auto; }
   .primary-action button,.primary-action button[data-action-kind] { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
   button:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; box-shadow: none; }
   .quality,.error,.deployment { color: CanvasText; border-inline-start-color: CanvasText; }

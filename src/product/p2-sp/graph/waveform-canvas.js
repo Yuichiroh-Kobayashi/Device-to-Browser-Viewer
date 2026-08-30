@@ -1,4 +1,4 @@
-import { formatScaleReadout, formatYAxisTick, makeXAxisTicks } from "./graph-core.js";
+import { formatScaleReadout, formatYAxisTick, makeXAxisTicks, tickLabelX } from "./graph-core.js";
 
 const style = (canvas, role, fallback) => getComputedStyle(canvas).getPropertyValue(`--graph-${role}`).trim() || fallback;
 export function formatMarkerLabel(marker) {
@@ -26,7 +26,7 @@ export class GraphWaveformCanvas {
     c.strokeStyle = style(this.canvas, "zero-boundary", "#4a5666"); c.beginPath(); c.moveTo(pad.left, pad.top + ph); c.lineTo(pad.left + pw, pad.top + ph); c.stroke();
     const ticks = makeXAxisTicks(frame.domain, precision, pw);
     c.strokeStyle = style(this.canvas, "grid", "#8a8a8a");
-    for (const tick of ticks) { const x = pad.left + (tick.value - frame.domain.minimum) / (frame.domain.maximum - frame.domain.minimum) * pw; c.beginPath(); c.moveTo(x, pad.top); c.lineTo(x, pad.top + ph); c.stroke(); c.fillText(tick.label, Math.max(2, Math.min(x - 12, pad.left + pw - 24)), height - 11); }
+    for (const tick of ticks) { const x = pad.left + (tick.value - frame.domain.minimum) / (frame.domain.maximum - frame.domain.minimum) * pw; c.beginPath(); c.moveTo(x, pad.top); c.lineTo(x, pad.top + ph); c.stroke(); c.fillText(tick.label, tickLabelX(x, c.measureText(tick.label).width, width), height - 11); }
     c.fillText("s", width - 12, height - 11);
     const xOf = (x) => pad.left + (x - frame.domain.minimum) / (frame.domain.maximum - frame.domain.minimum) * pw; const yOf = (y) => pad.top + ph - y / (frame.scale * 9) * ph;
     c.save(); c.beginPath(); c.rect(pad.left, pad.top, pw, ph); c.clip(); c.strokeStyle = style(this.canvas, this.channel === "voltage" ? "voltage-accent" : "current-accent", "#005aff"); c.lineWidth = 1.7;

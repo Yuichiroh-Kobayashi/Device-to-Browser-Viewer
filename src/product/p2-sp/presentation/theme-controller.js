@@ -29,8 +29,16 @@ export function themeControlLabel(effective) {
   return effective === "dark" ? "ライト表示 / Light mode" : "ダーク表示 / Dark mode";
 }
 
+/**
+ * The button carries the icon and the label as separate child nodes so a
+ * theme change can relabel the control by writing only the label node's
+ * textContent (see app.js syncThemeControl). Replacing the whole button's
+ * textContent, as earlier revisions did, would destroy the icon on every
+ * toggle. The icon is decorative and carries no information of its own, so
+ * it is aria-hidden.
+ */
 export function themeControlMarkup(label) {
-  return `<div class="theme-control"><button type="button" data-theme-toggle>${label}</button></div>`;
+  return `<button type="button" class="theme-toggle" data-theme-toggle><span class="theme-toggle-icon" aria-hidden="true"></span><span data-theme-toggle-label>${label}</span></button>`;
 }
 
 /** Resolves the browser/OS colour-scheme authority, or null where matchMedia is absent. */

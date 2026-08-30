@@ -37,21 +37,30 @@ Theme state belongs to application lifetime. It is not owned by
 `WebSocketSource`, `SessionAdapter`, `StreamModel`, the D2B stream, or a single
 Student/Professional view instance. A Student/Professional remount may recreate
 the visible control node, but the theme state survives it; live-frame
-presentation updates relabel the mounted control and never replace it.
+presentation updates relabel the mounted control and never replace it. The
+control's icon and label are separate child nodes, so a relabel writes only
+the label node and never destroys the icon.
 
-Implementation: [`src/product/p2-sp/presentation/theme-controller.js`](../../src/product/p2-sp/presentation/theme-controller.js),
-constructed once per application in [`src/product/p2-sp/app.js`](../../src/product/p2-sp/app.js).
+Implementation: [`src/product/p2-sp/presentation/theme-controller.js`](../../src/product/p2-sp/presentation/theme-controller.js)
+(control markup), constructed once per application in
+[`src/product/p2-sp/app.js`](../../src/product/p2-sp/app.js) and mounted as
+part of the shared measurement header in
+[`src/product/p2-sp/presentation/measurement-workspace.js`](../../src/product/p2-sp/presentation/measurement-workspace.js).
 
 ## Interaction
 
-- One native `<button>`, mounted ahead of the measurement content in both
-  Student and Professional so it is inside the initial viewport at 768x1024
-  portrait without scrolling. It stays visually secondary to the Student
-  Start/Stop measurement control: compact and right-aligned against a
-  full-width 52px primary action.
-- Visible text naming the theme the learner would move to
-  (`ダーク表示 / Dark mode`, `ライト表示 / Light mode`); any icon is redundant
-  decoration only.
+- One native `<button>`, part of the shared measurement header (the same
+  header both Student and Professional mount), not a standalone element ahead
+  of the workspace. At normal tablet/desktop widths it stays in the header
+  row, trailing the connection/stream text; at narrow widths it may wrap
+  naturally with the rest of the header, but it never reserves a dedicated
+  full-width row of its own ahead of the workspace. It remains visually
+  secondary to the full-width Start/Stop measurement control.
+- A decorative CSS-only icon (a half-filled circle, `aria-hidden`) sits beside
+  visible text naming the theme the learner would move to
+  (`ダーク表示 / Dark mode`, `ライト表示 / Light mode`); the icon carries no
+  information of its own and the visible bilingual label remains the
+  authoritative, action-oriented indicator.
 - Minimum 44 x 44 CSS px target.
 - Operable by pointer, touch, Enter and Space through native button semantics;
   no synthetic key or pointer handling exists.
@@ -100,9 +109,15 @@ unimplemented and coupled to reviewed Firmware Issue #15 policy.
 
 ### Action roles
 
-The Student primary control's presentation is selected by a semantic action
-role, not by its localized label. `studentPrimaryActionState()` derives
-`kind` from runtime state and the view writes it to `data-action-kind`:
+Student and Professional expose the same shared primary Start/Stop
+presentation and transaction authority, through one shared measurement
+workspace ([`src/product/p2-sp/presentation/measurement-workspace.js`](../../src/product/p2-sp/presentation/measurement-workspace.js))
+and the existing `StudentPrimaryActionController`. Professional does not own
+a separate lifecycle state machine, WebSocket owner, action controller, or
+command policy; activating the control in Professional drives the exact same
+transaction path as Student. This shared control's presentation is selected
+by a semantic action role, not by its localized label. `studentPrimaryActionState()`
+derives `kind` from runtime state and the view writes it to `data-action-kind`:
 
 | runtime state | `kind` | tokens consumed |
 | --- | --- | --- |

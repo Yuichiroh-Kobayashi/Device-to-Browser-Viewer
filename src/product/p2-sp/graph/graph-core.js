@@ -59,12 +59,14 @@ export function makeXAxisTicks(domain, precision, plotWidthCss) {
  * sit exactly on the plot's right edge -- follows the same rule: the label
  * starts 12px left of its grid line. The right-hand guard only engages when
  * the label's own measured width would actually run into the reserved "s"
- * unit zone (drawn at canvasWidth - 12), so it never fires for the realistic
- * 1-2 digit content this axis ever draws (device-time seconds, 0 through 60).
- * It is not a fixed-width guess: unlike a hardcoded clamp keyed off the plot
- * width alone, it re-derives the safe bound from the real label and the real
- * reserved zone, so it cannot spuriously clamp a tick that never gets close
- * to colliding with anything.
+ * unit zone (drawn at canvasWidth - 12). The display WINDOW is always 10, 30,
+ * or 60 seconds wide, but the ticks inside it are absolute elapsed device
+ * time, not clamped to that window: once the viewport has been sliding for a
+ * while, a 60s-wide window can show ticks like 940..1000, so labels are not
+ * bounded to 1-2 digits. The guard is not a fixed-width guess keyed off the
+ * plot width alone -- it re-derives the safe bound from the real label and
+ * the real reserved zone, so it clamps only when a label (of whatever width)
+ * would actually collide, and never spuriously clamps one that would not.
  */
 export function tickLabelX(x, labelWidth, canvasWidth) {
   const rightBound = canvasWidth - 12 - labelWidth - 4;

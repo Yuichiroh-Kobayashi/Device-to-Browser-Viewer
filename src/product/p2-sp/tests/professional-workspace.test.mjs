@@ -3,7 +3,7 @@ import test from "node:test";
 import { createViewerApplication } from "../app.js";
 import { createRuntimeOwner } from "../runtime-owner.js";
 import { professionalMarkup } from "../presentation/professional-view.js";
-import { makeStartedText, makeWelcomeText } from "../../source-export/viewer/src/sources/synthetic-source.js";
+import { makeStartedText, makeStoppedText, makeStreamEndFrame, makeWelcomeText } from "../../source-export/viewer/src/sources/synthetic-source.js";
 
 const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -122,7 +122,7 @@ test("Professional always shows both graphs regardless of Student's device displ
   application.destroy();
 });
 
-test("one activation in Professional causes exactly the same single transaction as the shared control in Student", async () => {
+test("Professional Start: exactly one transaction, the same shared control as Student", async () => {
   sockets = [];
   const { root, owner, application } = buildApplication();
   application.controller.setMode("professional");
@@ -152,5 +152,50 @@ test("one activation in Professional causes exactly the same single transaction 
   assert.equal(owner.adapter.summary().streamId, 9);
   assert.equal(sockets.length, 1, "no second transport was opened for this single activation");
   assert.equal(controls(socket, "start_stream").length, 1, "the duplicate click never produced a second start command");
+  application.destroy();
+});
+
+test("Professional Stop: exactly one transaction, the same shared control as Student", async () => {
+  sockets = [];
+  const { root, owner, application } = buildApplication();
+  application.controller.setMode("professional");
+  application.presentation.update();
+  const button = root.querySelector("[data-student-primary-action]");
+
+  // Reach STREAMING first, through the real shared Start path proven above.
+  const starting = button.onclick();
+  const socket = sockets[0];
+  socket.open();
+  await turn();
+  socket.message(makeWelcomeText());
+  await turn();
+  socket.message(makeStartedText(11, "live-vi"));
+  await starting;
+  assert.equal(owner.adapter.summary().controlState, "STREAMING");
+  assert.equal(controls(socket, "start_stream").length, 1);
+
+  // A synchronous second click while the Stop activation is already in
+  // flight is the technically meaningful case for the in-flight guard here
+  // (unlike Start, Stop's own owner.actions.stop() sends its control message
+  // synchronously, before any await, so the duplicate click lands while the
+  // first activation is provably still in progress).
+  const stopping = button.onclick();
+  const duplicateStop = button.onclick();
+  assert.equal(controls(socket, "stop_stream").length, 1, "exactly one stop command for one Professional Stop activation, despite the duplicate click");
+  socket.message(makeStreamEndFrame({ streamId: 11, sequence: 1n, timestampUs: 1n }));
+  socket.message(makeStoppedText(11));
+  await stopping;
+  await duplicateStop;
+  await turn();
+  // This activation opened its own transport (CLOSED -> Start), so -- exactly
+  // as for Student in the equivalent case (see
+  // student-primary-action-integration.test.mjs, "real CLOSED Start waits for
+  // welcome and real Student-owned Stop closes once") -- Stop also closes the
+  // transport it opened, settling in CLOSED rather than READY.
+  assert.equal(socket.readyState, 3, "the transport Professional's Stop opened must be closed, same as Student's equivalent case");
+  socket.disconnect();
+  assert.equal(owner.adapter.summary().controlState, "CLOSED", "Professional Stop must settle to the same non-streaming state as Student's equivalent (self-opened) case");
+  assert.equal(sockets.length, 1, "no second transport was opened for Stop");
+  assert.equal(controls(socket, "stop_stream").length, 1, "the duplicate click never produced a second stop command");
   application.destroy();
 });

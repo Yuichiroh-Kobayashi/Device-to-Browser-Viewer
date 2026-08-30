@@ -408,11 +408,15 @@ test("the real mounted primary control takes the Stop role while streaming", asy
   application.destroy();
 });
 
-test("the theme control is mounted ahead of the measurement content", () => {
+// The control lives inside the shared measurement header now (physical-review
+// UI polish), not ahead of the workspace as a separate block; this test's
+// title reflects that -- the assertions themselves already prove it, since
+// the header the control is part of is the workspace's own first child.
+test("the theme control (inside the shared header) precedes Start/Stop and the graph stack in document order", () => {
   const { root, application } = buildApplication();
   const html = root.innerHTML;
-  assert.ok(html.indexOf("data-theme-toggle") < html.indexOf("data-student-primary-action"), "the theme control must precede the primary action in the document");
-  assert.ok(html.indexOf("data-theme-toggle") < html.indexOf("data-student-graphs"), "the theme control must precede the graph stack");
+  assert.ok(html.indexOf("data-theme-toggle") < html.indexOf("data-student-primary-action"), "the header, and the theme control inside it, must precede the primary action in the document");
+  assert.ok(html.indexOf("data-theme-toggle") < html.indexOf("data-student-graphs"), "the header, and the theme control inside it, must precede the graph stack");
   application.destroy();
 });
 

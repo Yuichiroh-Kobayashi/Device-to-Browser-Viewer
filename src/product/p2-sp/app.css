@@ -1,19 +1,92 @@
-:root { font: 16px/1.45 system-ui, sans-serif; color: #18212f; background: #f7f9fc; }
-body { margin: 0; }
+/* Issue #9 semantic theme tokens. Light is the declared foundation; the dark
+   foundation applies through prefers-color-scheme while the application theme
+   state is "system", and through [data-theme="dark"] for a page-lifetime
+   manual override. Presentation rules below consume semantic roles only. */
+:root {
+  color-scheme: light dark;
+  --page: #f7f9fc; --surface: #ffffff; --text: #18212f; --text-muted: #4a5666; --border: #6f7d91;
+  --action-primary-surface: #00468c; --action-primary-text: #ffffff;
+  --action-stop-surface: #a32d00; --action-stop-text: #ffffff;
+  --measure-voltage: #005aff; --measure-current: #8a5a00;
+  --status-ready: #00622f; --status-streaming: #00468c; --status-busy: #5c4a00;
+  --status-warning: #7a4a00; --status-recoverable: #a32d00; --status-fatal: #8e0038;
+  --status-disabled: #5c6b80; --focus-inner: #045cbb; --focus-outer: #ffffff;
+  --graph-background: #ffffff; --graph-foreground: #18212f; --graph-grid: #8a8a8a;
+  --graph-zero-boundary: #4a5666; --graph-voltage-accent: #005aff; --graph-current-accent: #8a5a00;
+  --graph-gap: #6a32c9; --graph-invalid: #b3006b; --graph-segment: #4a5666;
+  --graph-muted: #4a5666; --graph-reverse-warning: #7a4a00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0c1118; --surface: #151e2a; --text: #e8eefb; --text-muted: #b9c6da; --border: #61728a;
+    --action-primary-surface: #2a6ac0; --action-primary-text: #ffffff;
+    --action-stop-surface: #c04412; --action-stop-text: #ffffff;
+    --measure-voltage: #4dc4ff; --measure-current: #f6aa00;
+    --status-ready: #5cd69b; --status-streaming: #6fb2ff; --status-busy: #e8d24d;
+    --status-warning: #f6aa00; --status-recoverable: #ff8a5c; --status-fatal: #ff8fb0;
+    --status-disabled: #8491a5; --focus-inner: #4dc4ff; --focus-outer: #0c1118;
+    --graph-background: #101821; --graph-foreground: #dfeaff; --graph-grid: #6b7a94;
+    --graph-zero-boundary: #9eadbf; --graph-voltage-accent: #4dc4ff; --graph-current-accent: #f6aa00;
+    --graph-gap: #c58cff; --graph-invalid: #ff8fb0; --graph-segment: #9eadbf;
+    --graph-muted: #b9c6da; --graph-reverse-warning: #f6aa00;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0c1118; --surface: #151e2a; --text: #e8eefb; --text-muted: #b9c6da; --border: #61728a;
+  --action-primary-surface: #2a6ac0; --action-primary-text: #ffffff;
+  --action-stop-surface: #c04412; --action-stop-text: #ffffff;
+  --measure-voltage: #4dc4ff; --measure-current: #f6aa00;
+  --status-ready: #5cd69b; --status-streaming: #6fb2ff; --status-busy: #e8d24d;
+  --status-warning: #f6aa00; --status-recoverable: #ff8a5c; --status-fatal: #ff8fb0;
+  --status-disabled: #8491a5; --focus-inner: #4dc4ff; --focus-outer: #0c1118;
+  --graph-background: #101821; --graph-foreground: #dfeaff; --graph-grid: #6b7a94;
+  --graph-zero-boundary: #9eadbf; --graph-voltage-accent: #4dc4ff; --graph-current-accent: #f6aa00;
+  --graph-gap: #c58cff; --graph-invalid: #ff8fb0; --graph-segment: #9eadbf;
+  --graph-muted: #b9c6da; --graph-reverse-warning: #f6aa00;
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+
+:root { font: 16px/1.45 system-ui, sans-serif; color: var(--text); background: var(--page); }
+body { margin: 0; color: var(--text); background: var(--page); }
 main { max-width: 72rem; margin: auto; padding: 1rem; }
 header,.values,.actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
 .primary-action { margin-block: .75rem 1rem; }
-.primary-action button { width: 100%; min-height: 52px; font-size: 1.125rem; font-weight: 700; }
-.values output,.graphs section,.professional { background: #fff; border: 1px solid #a6b2c4; border-radius: .5rem; padding: 1rem; }
+/* The semantic action role comes from studentPrimaryActionState().kind, which is
+   derived from runtime state -- never from the localized label text. */
+.primary-action button { width: 100%; min-height: 52px; font-size: 1.125rem; font-weight: 700; border-radius: .375rem; color: var(--action-primary-text); background: var(--action-primary-surface); border: 1px solid var(--action-primary-surface); }
+.primary-action button[data-action-kind="start"] { color: var(--action-primary-text); background: var(--action-primary-surface); border-color: var(--action-primary-surface); }
+.primary-action button[data-action-kind="stop"] { color: var(--action-stop-text); background: var(--action-stop-surface); border-color: var(--action-stop-surface); }
+.primary-action button[data-action-kind="busy"] { color: var(--status-busy); background: var(--surface); border-color: var(--status-busy); }
+.primary-action button[data-action-kind="disabled"] { color: var(--surface); background: var(--status-disabled); border-color: var(--status-disabled); }
+.values output,.graphs section,.professional-diagnostics { background: var(--surface); border: 1px solid var(--border); border-radius: .5rem; padding: 1rem; }
 .values output { flex: 1 1 16rem; font-size: 1.25rem; }
+.values output[data-value-panel="voltage"] { border-inline-start: 4px solid var(--measure-voltage); }
+.values output[data-value-panel="current"] { border-inline-start: 4px solid var(--measure-current); }
 .graphs { display: grid; grid-template-columns: 1fr; gap: 1rem; margin-block: 1rem; }
 .graphs[data-layout="single"] { grid-template-columns: minmax(0, 1fr); }
 .graph-panel { min-width: 0; }
 .graph-panel[hidden] { display: none; }
-.graph-panel canvas { display: block; width: 100%; height: 18rem; --graph-background: #101821; --graph-foreground: #dfeaff; --graph-grid: #405064; --graph-zero-boundary: #8491a5; --graph-voltage-accent: #0879a8; --graph-current-accent: #087a49; --graph-gap: #f6c45d; --graph-invalid: #d67eff; --graph-reverse-warning: #d67eff; --graph-muted: #9eadbf; }
-button { min-width: 44px; min-height: 44px; padding: .5rem .9rem; }
-button:focus-visible { outline: 3px solid #045cbb; outline-offset: 2px; }
-.quality,.error,.deployment { border-inline-start: 4px solid #045cbb; padding-inline-start: .5rem; }
+.graph-panel canvas { display: block; width: 100%; height: 18rem; background: var(--graph-background); }
+button { min-width: 44px; min-height: 44px; padding: .5rem .9rem; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
+button:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2px; box-shadow: 0 0 0 6px var(--focus-outer); }
+/* Part of the measurement header row rather than a standalone block, so it
+   never pushes the workspace down a full row on its own (physical iPad
+   review). The header is already a flex row; margin-inline-start: auto pushes
+   the control to the row's trailing edge while letting it wrap under the
+   title on narrow widths. It stays visually secondary: compact, against a
+   full-width 52px primary action. */
+.theme-toggle { margin-inline-start: auto; display: inline-flex; align-items: center; gap: .4em; font-weight: 600; font-size: .9375rem; }
+.theme-toggle-icon { width: 1em; height: 1em; flex: none; border-radius: 50%; border: 1.5px solid currentColor; background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
+.quality,.error,.deployment { border-inline-start: 4px solid var(--focus-inner); padding-inline-start: .5rem; color: var(--text); }
+.quality { color: var(--text-muted); }
+.error:not(:empty) { color: var(--status-recoverable); border-inline-start-color: var(--status-recoverable); }
+.deployment[data-deployment-status="matched"] { color: var(--status-ready); border-inline-start-color: var(--status-ready); }
+.deployment[data-deployment-status="unknown"],.deployment[data-deployment-status="mismatched"] { color: var(--status-fatal); border-inline-start-color: var(--status-fatal); }
+select { min-height: 44px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
 
 @media (max-width: 599px) {
   .graphs { grid-template-columns: 1fr; }
@@ -28,6 +101,17 @@ button:focus-visible { outline: 3px solid #045cbb; outline-offset: 2px; }
 
 @media (min-width: 1024px) {
   .graphs[data-layout="both"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Forced colours: hand every surface back to the system palette and keep a
+   system-drawn focus cue, so Windows/Edge high-contrast users never depend on
+   the authored tokens above. */
+@media (forced-colors: active) {
+  .values output,.graphs section,.professional-diagnostics,button,select { border: 1px solid CanvasText; forced-color-adjust: auto; }
+  .primary-action button,.primary-action button[data-action-kind] { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
+  button:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; box-shadow: none; }
+  .quality,.error,.deployment { color: CanvasText; border-inline-start-color: CanvasText; }
+  .deployment[data-deployment-status="matched"],.deployment[data-deployment-status="unknown"],.deployment[data-deployment-status="mismatched"],.error:not(:empty) { color: CanvasText; border-inline-start-color: CanvasText; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

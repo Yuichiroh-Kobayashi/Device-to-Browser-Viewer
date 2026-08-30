@@ -43,6 +43,8 @@ CURRENT_PRODUCT_ALLOWLIST = frozenset({
     "presentation/view-state.js",
     "presentation/deployment-context.js",
     "presentation/professional-view.js",
+    "presentation/theme-controller.js",
+    "presentation/measurement-workspace.js",
     "graph/graph-core.js",
     "graph/waveform-canvas.js",
     "tests/one-runtime.test.mjs",
@@ -53,6 +55,10 @@ CURRENT_PRODUCT_ALLOWLIST = frozenset({
     "tests/student-presentation.test.mjs",
     "tests/student-primary-action-controller.test.mjs",
     "tests/student-primary-action-integration.test.mjs",
+    "tests/theme-contrast.test.mjs",
+    "tests/theme-lifecycle.test.mjs",
+    "tests/theme-state.test.mjs",
+    "tests/professional-workspace.test.mjs",
     "README.measurement.md",
 })
 

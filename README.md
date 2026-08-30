@@ -22,6 +22,8 @@ or extending this repository:
 
 Source: [`src/product/p2-sp/`](src/product/p2-sp/). Current product contract:
 [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md).
+Post-beta.1 theme/colour presentation contract:
+[`docs/product/theme-and-color-contract.md`](docs/product/theme-and-color-contract.md).
 Source/build provenance: [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)
 and [`docs/provenance/`](docs/provenance/).
 

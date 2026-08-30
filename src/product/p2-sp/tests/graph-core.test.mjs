@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   CURRENT_SCALES, GraphPolicyController, VOLTAGE_SCALES, clipLineToRectangle,
   constructGraphFrame, formatScaleReadout, formatStudentValue, formatYAxisTick, makeTimeDomain, makeXAxisTicks,
-  timePrecision, updateStagedScale,
+  tickLabelX, timePrecision, updateStagedScale,
 } from "../graph/graph-core.js";
 import { formatMarkerLabel } from "../graph/waveform-canvas.js";
 import { qualityFor, runtimeValueState } from "../presentation/view-state.js";
@@ -46,6 +46,105 @@ test("responsive ticks are deterministic and fit required viewport widths", () =
     assert.ok(ticks.length >= 2); assert.ok(ticks.length <= Math.floor((width - 98) / (precision ? 58 : 46)));
     assert.ok(ticks.every((tick) => tick.label === tick.value.toFixed(precision)));
   }
+});
+
+/**
+ * Physical-review polish item 2: the final 30/60 s tick label was visibly
+ * shifted left of its own grid line on iPad, because the old draw() clamp
+ * (`Math.min(x - 12, pad.left + pw - 24)`) forced an extra 12px leftward
+ * shift specifically on the last tick, which sits at the plot's right edge.
+ * Every tick, first through last, must use the same anchor: 12px left of its
+ * grid line, unless the label's own measured width would actually run into
+ * the reserved trailing "s" unit zone. This is checked first at a fresh
+ * origin (domain 0..window, 1-2 digit labels) below, and separately against
+ * sliding device-time domains further down (domain 60..120, 940..1000, where
+ * ticks carry 2-4 digit absolute-elapsed-time labels even though the display
+ * WINDOW is still only 10/30/60 seconds wide).
+ */
+test("X-axis tick label anchor is the same rule for every tick, first through final", () => {
+  const PAD_LEFT = 64; const PAD_RIGHT = 34;
+  const measureWidth = (label) => label.length * 6.6; // order-of-magnitude 11px monospace glyph width
+  for (const width of [1366, 1024, 768, 320]) {
+    const plotWidth = width - PAD_LEFT - PAD_RIGHT;
+    for (const windowSeconds of [10, 30, 60]) {
+      const precision = timePrecision(windowSeconds);
+      const domain = { minimum: 0, maximum: windowSeconds };
+      const ticks = makeXAxisTicks(domain, precision, plotWidth);
+      const xOf = (tick) => PAD_LEFT + (tick.value - domain.minimum) / (domain.maximum - domain.minimum) * plotWidth;
+      for (const [index, tick] of ticks.entries()) {
+        const x = xOf(tick);
+        const naturalAnchor = x - 12;
+        const anchored = tickLabelX(x, measureWidth(tick.label), width);
+        const position = index === 0 ? "first" : index === ticks.length - 1 ? "final" : "middle";
+        assert.equal(anchored, naturalAnchor, `${windowSeconds}s window at ${width}px: the ${position} tick (${tick.label}) must use the same anchor as every other tick`);
+      }
+    }
+  }
+});
+
+test("the final tick no longer reproduces the old pad-relative clamp that shifted it left", () => {
+  const PAD_LEFT = 64; const PAD_RIGHT = 34; const width = 1366; const windowSeconds = 30;
+  const plotWidth = width - PAD_LEFT - PAD_RIGHT;
+  const domain = { minimum: 0, maximum: windowSeconds };
+  const ticks = makeXAxisTicks(domain, timePrecision(windowSeconds), plotWidth);
+  const finalTick = ticks.at(-1);
+  assert.equal(finalTick.value, windowSeconds, "this case requires the final tick to sit exactly on the plot's right edge");
+  const x = PAD_LEFT + plotWidth; // the final tick's grid line, at the plot's right edge
+  const naturalAnchor = x - 12;
+  const oldBuggyAnchor = Math.max(2, Math.min(x - 12, PAD_LEFT + plotWidth - 24));
+  assert.notEqual(oldBuggyAnchor, naturalAnchor, "the scenario must actually exercise the old bug for this test to mean anything");
+  const corrected = tickLabelX(x, finalTick.label.length * 6.6, width);
+  assert.equal(corrected, naturalAnchor, "the corrected anchor must match the natural, unclamped position");
+  assert.notEqual(corrected, oldBuggyAnchor, "the corrected anchor must not reproduce the old left-shifted position");
+});
+
+test("sliding device-time domains (window has moved past the origin) use the same anchor rule, with wider labels", () => {
+  const PAD_LEFT = 64; const PAD_RIGHT = 34;
+  const measureWidth = (label) => label.length * 6.6;
+  // Authoritative sliding domains, not hand-typed: makeTimeDomain() is the
+  // same function the graph policy controller calls every frame once the
+  // acquisition has run longer than the display window.
+  const cases = [
+    { originUs: 0n, latestUs: 120_000_000n, windowSeconds: 60 }, // domain 60..120
+    { originUs: 0n, latestUs: 1_000_000_000n, windowSeconds: 60 }, // domain 940..1000
+  ];
+  for (const { originUs, latestUs, windowSeconds } of cases) {
+    const domain = makeTimeDomain(originUs, latestUs, windowSeconds);
+    assert.ok(domain.minimum > 0, "this case must actually exercise a slid-past-origin domain");
+    for (const width of [1366, 768]) {
+      const plotWidth = width - PAD_LEFT - PAD_RIGHT;
+      const precision = timePrecision(windowSeconds);
+      const ticks = makeXAxisTicks(domain, precision, plotWidth);
+      assert.ok(ticks.some((tick) => tick.label.length >= 3), `domain ${domain.minimum}..${domain.maximum} must actually produce a multi-digit (3+ char) label for this to be a meaningful regression`);
+      const xOf = (tick) => PAD_LEFT + (tick.value - domain.minimum) / (domain.maximum - domain.minimum) * plotWidth;
+      for (const [index, tick] of ticks.entries()) {
+        const x = xOf(tick);
+        const naturalAnchor = x - 12;
+        const anchored = tickLabelX(x, measureWidth(tick.label), width);
+        const position = index === 0 ? "first" : index === ticks.length - 1 ? "final" : "middle";
+        assert.equal(anchored, naturalAnchor, `domain ${domain.minimum}..${domain.maximum} at ${width}px: the ${position} tick (${tick.label}) must use the same anchor as every other tick`);
+        // Grid-line coordinates themselves (what tickLabelX is anchored to)
+        // must not have moved: x is computed the same way draw() computes it,
+        // from tick.value and the domain, independent of the label fix.
+        assert.ok(Number.isFinite(x) && x >= PAD_LEFT - 1e-9 && x <= PAD_LEFT + plotWidth + 1e-9, "the grid-line x coordinate must stay inside the plot area");
+      }
+      // The trailing "s" unit, drawn at width - 12, must stay clear of every label.
+      for (const tick of ticks) {
+        const x = xOf(tick);
+        const anchored = tickLabelX(x, measureWidth(tick.label), width);
+        assert.ok(anchored + measureWidth(tick.label) <= width - 12, `the "${tick.label}" label must not run into the reserved "s" unit zone at width - 12`);
+      }
+    }
+  }
+});
+
+test("an unrealistically long tick label still clamps clear of the trailing unit glyph", () => {
+  const width = 300;
+  const longLabel = "999999"; // far longer than any real device-time tick this axis draws, sliding domain included
+  const x = width - 34; // at the plot's right edge
+  const anchored = tickLabelX(x, longLabel.length * 6.6, width);
+  assert.ok(anchored < x - 12, "an oversized label is the one case the guard is for");
+  assert.ok(anchored <= width - 12 - longLabel.length * 6.6 - 4, "an oversized label must stay clear of the reserved unit-glyph zone");
 });
 
 test("literal Student unit table boundaries, signs, negative zero, and no post-rounding reselection", () => {

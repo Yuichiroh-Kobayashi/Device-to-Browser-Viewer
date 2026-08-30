@@ -8,6 +8,11 @@ import { displayValue } from "../presentation/view-state.js";
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const css = readFileSync(new URL("../app.css", import.meta.url), "utf8");
 const student = readFileSync(new URL("../presentation/student-view.js", import.meta.url), "utf8");
+// The header/deployment/values/graphs markup and its live update path are now
+// the shared measurement workspace both Student and Professional mount
+// through (physical-review polish item 3), so structural assertions about
+// that markup read measurement-workspace.js rather than student-view.js.
+const workspace = readFileSync(new URL("../presentation/measurement-workspace.js", import.meta.url), "utf8");
 const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const waveform = readFileSync(new URL("../../source-export/viewer/src/render/waveform-canvas.js", import.meta.url), "utf8");
 const openDeployment = Object.freeze({ startAllowed: true });
@@ -23,9 +28,9 @@ assert.match(css, /min-height:\s*44px/);
 assert.match(css, /focus-visible/);
 assert.match(css, /prefers-reduced-motion/);
 assert.match(css, /\.graph-panel canvas[\s\S]*?width:\s*100%[\s\S]*?height:\s*18rem/);
-assert.match(student, /data-live="deployment"/);
-assert.match(student, /<canvas data-waveform="voltage"/);
-assert.match(student, /<canvas data-waveform="current"/);
+assert.match(workspace, /data-live="deployment"/);
+assert.match(workspace, /<canvas data-waveform="voltage"/);
+assert.match(workspace, /<canvas data-waveform="current"/);
 assert.equal((studentMarkup().match(/data-student-primary-action/g) ?? []).length, 1);
 assert.ok(studentMarkup().indexOf("data-student-primary-action") < studentMarkup().indexOf("data-student-graphs"));
 assert.deepEqual(studentGraphVisibility({ target: "device-hosted", displayName: "Voltage" }), { voltage: true, current: false });
@@ -34,9 +39,9 @@ assert.deepEqual(studentGraphVisibility({ target: "device-hosted", displayName: 
 assert.deepEqual(studentGraphVisibility({ target: "device-hosted" }), { voltage: false, current: false });
 assert.deepEqual(studentGraphVisibility({ target: "external-development" }), { voltage: true, current: true });
 assert.equal(displayValue(1.23456, "V", ""), "1.235 V");
-assert.doesNotMatch(student, /Voltage graph: device-time axis|Current graph: device-time axis/);
-assert.match(student, /deploymentNode\.dataset\.deploymentStatus/);
-assert.match(student, /deployment\.message/);
+assert.doesNotMatch(workspace, /Voltage graph: device-time axis|Current graph: device-time axis/);
+assert.match(workspace, /deploymentNode\.dataset\.deploymentStatus/);
+assert.match(workspace, /deployment\.message/);
 assert.equal(studentPrimaryActionState(state("CLOSED"), openDeployment, { inFlight: false }).enabled, true);
 assert.equal(studentPrimaryActionState(state("READY"), blockedDeployment, { inFlight: false }).enabled, false);
 assert.equal(studentPrimaryActionState(state("STREAMING"), openDeployment, { inFlight: false }).label, "測定終了 / Stop");

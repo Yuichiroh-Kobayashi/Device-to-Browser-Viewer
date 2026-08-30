@@ -1,0 +1,87 @@
+import { presentError, qualityFor, runtimeValueState } from "./view-state.js";
+import { formatStudentValue } from "../graph/graph-core.js";
+import { themeControlMarkup } from "./theme-controller.js";
+
+/**
+ * The measurement workspace -- header, deployment line, Start/Stop, value
+ * panels, both graphs, quality/error lines -- is the one presentation
+ * structure Student and Professional both mount and update through. Neither
+ * view owns a second copy of this markup or of this update path: Professional
+ * differs only in the graph-visibility policy it passes in (always both) and
+ * in the diagnostics section it renders below this workspace.
+ */
+
+export function studentPrimaryActionState(state, deployment, operation) {
+  if (operation.inFlight) return Object.freeze({ enabled: false, busy: true, kind: "busy", label: operation.operationKind === "stop" ? "終了中… / Stopping…" : "開始中… / Starting…" });
+  if (state.startPending) return Object.freeze({ enabled: false, busy: true, kind: "busy", label: "開始中… / Starting…" });
+  if (state.stopPending) return Object.freeze({ enabled: false, busy: true, kind: "busy", label: "終了中… / Stopping…" });
+  if (state.controlState === "CONNECTED") return Object.freeze({ enabled: false, busy: true, kind: "busy", label: "開始中… / Starting…" });
+  if (state.controlState === "STREAMING") return Object.freeze({ enabled: true, busy: false, kind: "stop", label: "測定終了 / Stop" });
+  const enabled = (state.controlState === "CLOSED" || state.controlState === "READY") && deployment.startAllowed === true;
+  return Object.freeze({ enabled, busy: false, kind: enabled ? "start" : "disabled", label: "測定開始 / Start" });
+}
+
+export function studentAggregateQuality(quality, visibility) {
+  const visible = [visibility.voltage ? quality.voltage : null, visibility.current ? quality.current : null].filter(Boolean);
+  if (!visible.length || visible.every((value) => value === "no-valid-data")) return "no-valid-data";
+  if (visible.includes("invalid")) return "invalid";
+  if (visible.includes("no-valid-data")) return "no-valid-data";
+  if (visible.includes("gap")) return "gap";
+  return "normal";
+}
+
+function required(root, selector) {
+  const node = root.querySelector(selector);
+  if (!node) throw new Error(`measurement workspace node missing: ${selector}`);
+  return node;
+}
+
+function visibleQuality(value) {
+  return value === "stale" ? "停止時の値" : value === "invalid" ? "無効" : value === "no-valid-data" ? "データなし" : "";
+}
+
+export function measurementWorkspaceMarkup(themeLabel) {
+  return `<header><strong>VAMeter / V-I measurement</strong><span data-live="connection"></span><span data-live="stream"></span>${themeControlMarkup(themeLabel)}</header>
+    <p class="deployment" data-live="deployment"></p>
+    <div class="primary-action"><button data-student-primary-action data-action-kind="disabled" disabled>測定開始 / Start</button></div>
+    <div class="values"><output data-value-panel="voltage" data-live="voltage"></output><output data-value-panel="current" data-live="current"></output></div>
+    <div class="graphs" data-student-graphs>
+      <section class="graph-panel" data-graph-panel="voltage" aria-label="Voltage graph"><canvas data-waveform="voltage" role="img" aria-label="Voltage graph over device time; gaps are not joined"></canvas></section>
+      <section class="graph-panel" data-graph-panel="current" aria-label="Current graph"><canvas data-waveform="current" role="img" aria-label="Current graph over device time; invalid samples are not zero"></canvas></section>
+    </div>
+    <p class="quality" data-live="quality"></p>
+    <p class="error" data-live="error"></p>
+    <p class="error" data-live="action-error"></p>`;
+}
+
+export function updateMeasurementWorkspace(root, owner, deployment, actionDiagnostic, primaryController, graphVisibility) {
+  const state = owner.adapter.summary();
+  const error = presentError(state.lastError);
+  const quality = qualityFor(owner);
+  const latest = owner.model.latest;
+  required(root, '[data-live="connection"]').textContent = `接続: ${state.controlState}`;
+  required(root, '[data-live="stream"]').textContent = `測定: ${state.streamId ?? "none"}`;
+  const deploymentNode = required(root, '[data-live="deployment"]');
+  deploymentNode.dataset.deploymentStatus = deployment.bundleStatus;
+  deploymentNode.textContent = `配備状態: ${deployment.bundleStatus}; ${deployment.message}`;
+  const qualityParts = [visibleQuality(studentAggregateQuality(quality, graphVisibility)), quality.gap ? "欠落あり" : ""].filter(Boolean);
+  required(root, '[data-live="quality"]').textContent = qualityParts.join(" · ");
+  const stoppedState = runtimeValueState(owner);
+  const voltageState = [visibleQuality(quality.voltage), stoppedState].filter(Boolean).join(" · "); const currentState = [visibleQuality(quality.current), stoppedState].filter(Boolean).join(" · ");
+  required(root, '[data-live="voltage"]').textContent = `電圧 Voltage ${formatStudentValue(latest?.voltage_V, "voltage")}${voltageState ? ` (${voltageState})` : ""}`.trim();
+  required(root, '[data-live="current"]').textContent = `電流 Current ${formatStudentValue(latest?.current_A, "current")}${currentState ? ` (${currentState})` : ""}`.trim();
+  required(root, '[data-live="error"]').textContent = error.classification === "none" ? "" : `測定エラー: ${error.code}`;
+  required(root, '[data-live="action-error"]').textContent = actionDiagnostic.count ? `操作を完了できませんでした (${actionDiagnostic.lastAction})` : "";
+  required(root, '[data-value-panel="voltage"]').hidden = !graphVisibility.voltage;
+  required(root, '[data-value-panel="current"]').hidden = !graphVisibility.current;
+  required(root, '[data-graph-panel="voltage"]').hidden = !graphVisibility.voltage;
+  required(root, '[data-graph-panel="current"]').hidden = !graphVisibility.current;
+  required(root, "[data-student-graphs]").dataset.layout = graphVisibility.voltage && graphVisibility.current ? "both" : "single";
+  const primaryState = studentPrimaryActionState(state, deployment, primaryController.snapshot());
+  const button = required(root, "[data-student-primary-action]");
+  button.textContent = primaryState.label;
+  button.dataset.actionKind = primaryState.kind;
+  button.disabled = !primaryState.enabled;
+  button.setAttribute("aria-disabled", String(!primaryState.enabled));
+  button.setAttribute("aria-busy", String(primaryState.busy));
+}

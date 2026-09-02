@@ -3,9 +3,10 @@
 This repository contains two distinct things. Keep them separate when reading
 or extending this repository:
 
-1. **The device-hosted product Viewer** (`src/product/p2-sp/`) — the Student /
-   Professional Viewer shipped as part of VAMeter-Edu `v2.0.0-beta.1`. The
-   device serves this bundle directly; no PC, cloud account, or relay is
+1. **The device-hosted product Viewer source lineage** (`src/product/p2-sp/`) —
+   the qualified Student / Professional release source from this lineage was
+   shipped in stable VAMeter-Edu `v2.0.0`. The device serves that release bundle
+   directly; no PC, cloud account, or relay is
    required. See [Device-hosted product Viewer](#device-hosted-product-viewer).
 2. **The development / validation harness** (this repository's root
    `index.html`, `src/`, `tools/serve.py`) — a dependency-free,
@@ -20,17 +21,27 @@ or extending this repository:
 
 ## Device-hosted product Viewer
 
-Source: [`src/product/p2-sp/`](src/product/p2-sp/). Current product contract:
+Source: [`src/product/p2-sp/`](src/product/p2-sp/). Current deployed-product
+contract: [VAMeter-Edu device-hosted Viewer contract](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/blob/main/docs/product/device-hosted-viewer-contract.md).
+Historical beta.1 contract:
 [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md).
-Post-beta.1 theme/colour presentation contract:
+Theme/colour presentation contract:
 [`docs/product/theme-and-color-contract.md`](docs/product/theme-and-color-contract.md).
 Source/build provenance: [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)
 and [`docs/provenance/`](docs/provenance/).
 
-The published beta.1 bundle from this lineage is what VAMeter-Edu's
-device-hosted Viewer profile currently serves directly from the device. A
-current-source successor is not device-served until a later Firmware Viewer
-AssetPool/bundle intake. VAMeter-Edu records physical validation on
+The stable [VAMeter-Edu `v2.0.0` release](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0),
+published on 2026-09-02, serves this exact Viewer authority:
+
+- source commit `e1ebdb1cde8585a37447a66f4c8183654f4c3cda`;
+- source tree `8f8426e9af1649f68e66e4f8f432d1b91452e38d`;
+- bundle `4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af`.
+
+This repository's current `main` may contain changes newer than that released
+authority. Later Viewer source changes do not alter the published `v2.0.0`
+bundle by themselves; a different Viewer becomes device-served only after a
+separately reviewed Firmware Viewer/AssetPool intake and a later VAMeter-Edu
+release. VAMeter-Edu records physical validation on
 Windows Edge 151 and an iPad 7th generation running iPadOS 18.7.9 Safari for
 this device-hosted architecture (see VAMeter-Edu's
 `docs/product/device-hosted-viewer-contract.md`). Current behavior:
@@ -41,15 +52,16 @@ this device-hosted architecture (see VAMeter-Edu's
   malformed, unknown, or case-altered `display_name` fails closed — there is
   no silent fallback to `Both`.
 - Professional mode always shows both Voltage and Current graphs.
-- Published beta.1 and current source both fail closed on invalid public status.
-  Current post-beta.1 source performs that check with the exact Public Status
-  Standard R1 `validatePublicStatus()` reference source; this is source/build
-  evidence, not a claim that the successor bundle is already device-served.
+- The released Viewer fails closed on invalid Public Status and performs that
+  check with the reviewed Public Status Standard R1 `validatePublicStatus()`
+  reference source.
 - Voltage and Current waveforms use device timestamps, preserve gaps, and
   never turn an invalid sample into zero.
 - The device-time display window offers exactly 10, 30, and 60 seconds,
   defaults to 60 seconds, and changes without reconnecting or restarting the
   stream.
+- The theme follows the system Light/Dark preference by default and offers a
+  page-lifetime manual override that is not persisted across reloads.
 - Live-frame presentation updates keep the action DOM node identities stable,
   so a human Stop press is not lost to node replacement.
 - No cloud account, internet access, or separate PC is required when the
@@ -88,11 +100,11 @@ disposable input, and checks the complete result against the accepted Firmware
 identity. It does not impose CRLF on current or future product source. See
 [`tools/product-repro/README.md`](tools/product-repro/README.md) and
 [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md) for the
-exact authority and representation boundaries. This build/provenance repair
-does not change the published beta.1 runtime or its physical validation. The
-current Viewer candidate also does not update an already served device bundle:
-Firmware producer logic needs no R1 change, but a later Firmware Viewer
-AssetPool/bundle intake is required.
+exact authority and representation boundaries. This historical reproduction
+material does not change the published beta.1 runtime or its physical
+validation. Likewise, later Viewer source changes do not update the stable
+`v2.0.0` bundle: serving a different identity requires a separately reviewed
+Firmware Viewer/AssetPool intake and a later VAMeter-Edu release.
 
 Future work on this Viewer is tracked as GitHub Issues, not as unlinked
 roadmap prose:
@@ -111,9 +123,9 @@ roadmap prose:
   analog-meter answer-check display correction (アナログ計器の答え合わせ用表示補正), a
   presentation-only correction to the answer-check display value that does
   not touch CSV, D2B measurement values, or the measurement pipeline. Owned
-  by VAMeter-Edu; see
+  by VAMeter-Edu; see the historical beta.1 boundary in
   [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md)
-  for its current beta.1 boundary.
+  for provenance.
 
 ## Development / validation harness
 

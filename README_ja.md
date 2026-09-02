@@ -4,9 +4,10 @@
 
 このrepositoryには、性質の異なる2つのものが含まれています。読む・拡張する際は明確に区別してください。
 
-1. **device-hosted product Viewer**(`src/product/p2-sp/`) — VAMeter-Edu
-   `v2.0.0-beta.1`の一部としてリリースされたStudent / Professional Viewerです。
-   deviceがこのbundleを直接配信するため、PC・cloud account・relayは不要です。
+1. **device-hosted product Viewer source lineage**(`src/product/p2-sp/`) —
+   このlineageからqualifiedされたStudent / Professional release sourceが
+   VAMeter-Edu安定版`v2.0.0`でリリースされました。deviceがそのrelease bundleを
+   直接配信するため、PC・cloud account・relayは不要です。
    詳細は[device-hosted product Viewer](#device-hosted-product-viewer)を参照してください。
 2. **development / validation harness**(このrepositoryのroot `index.html`、
    `src/`、`tools/serve.py`) — `d2b-stream/0.1`の`vi-measurement`処理を開発・
@@ -19,15 +20,28 @@
 
 ## device-hosted product Viewer
 
-Source: [`src/product/p2-sp/`](src/product/p2-sp/)。現在のproduct contract:
+Source: [`src/product/p2-sp/`](src/product/p2-sp/)。現在のdeployed-product contract:
+[VAMeter-Edu device-hosted Viewer contract](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/blob/main/docs/product/device-hosted-viewer-contract.md)。
+historical beta.1 contract:
 [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md)。
+theme/colour presentation contract:
+[`docs/product/theme-and-color-contract.md`](docs/product/theme-and-color-contract.md)。
 source/build provenance:
 [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)、
 [`docs/provenance/`](docs/provenance/)。
 
-このlineageのpublish済みbeta.1 bundleが、現在VAMeter-Eduのdevice-hosted
-Viewer profileからdevice配信されています。current sourceの後継candidateは、
-後続Firmware Viewer AssetPool/bundle intakeまでdevice配信されません。
+2026-09-02に公開された安定版
+[VAMeter-Edu `v2.0.0` release](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0)は、
+次のexact Viewer authorityをdevice配信します。
+
+- source commit `e1ebdb1cde8585a37447a66f4c8183654f4c3cda`
+- source tree `8f8426e9af1649f68e66e4f8f432d1b91452e38d`
+- bundle `4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af`
+
+このrepositoryの現在の`main`には、このrelease authorityより新しい変更が含まれる
+場合があります。後続のViewer source変更だけでは、公開済み`v2.0.0` bundleは
+変わりません。別のViewerがdevice配信されるのは、Firmware Viewer/AssetPool
+intakeを別途reviewし、後続VAMeter-Edu releaseに含めた後だけです。
 VAMeter-Eduでは、Windows Edge 151および第7世代iPad
 (iPadOS 18.7.9 Safari)でこのdevice-hosted architectureの実機検証を記録して
 います(VAMeter-Eduの`docs/product/device-hosted-viewer-contract.md`参照)。
@@ -39,14 +53,14 @@ VAMeter-Eduでは、Windows Edge 151および第7世代iPad
   欠落・不正・未知・大文字小文字違いの場合はfail closedとなり、`Both`への
   暗黙fallbackはありません。
 - Professional modeは常にVoltage / Current両方のgraphを表示します。
-- publish済みbeta.1とcurrent sourceはいずれも不正なpublic statusをfail closed
-  します。current post-beta.1 sourceはexact Public Status Standard R1
-  `validatePublicStatus()` reference sourceで検証しますが、これは後継bundleが
-  既にdevice配信済みという主張ではありません。
+- release済みViewerは不正なPublic Statusをfail closedとし、review済みの
+  Public Status Standard R1 `validatePublicStatus()` reference sourceで検証します。
 - Voltage / Current波形はdevice timestampを使用し、gapを保持し、invalidな
   測定値を0へ置き換えません。
 - device-time display windowは10 / 30 / 60秒のみで、default 60秒、streamの
   reconnect/restart無しで変更できます。
+- themeはdefaultでsystemのLight/Dark preferenceに従い、reload後には保持されない
+  page-lifetimeのmanual overrideを提供します。
 - live-frame更新でaction DOMのnode identityは安定しており、人間によるStop
   押下がnode置換で失われることはありません。
 - deviceがViewerを配信する構成では、cloud account・インターネット接続・
@@ -85,10 +99,10 @@ accepted Firmware identityと照合します。current/future product sourceへC
 強制しません。正確なauthorityとrepresentation境界は
 [`tools/product-repro/README.md`](tools/product-repro/README.md)と
 [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md)を参照してください。
-このbuild/provenance repairはpublish済みbeta.1 runtimeや実機検証を変更しません。
-current Viewer candidateだけではdeviceがserveするbundleも変わりません。Firmware
-producer logicのR1変更は不要ですが、後続のFirmware Viewer AssetPool/bundle
-intakeが必要です。
+このhistorical reproduction materialはpublish済みbeta.1 runtimeや実機検証を
+変更しません。同様に、後続Viewer source変更だけでは安定版`v2.0.0` bundleは
+更新されません。別identityを配信するには、Firmware Viewer/AssetPool intakeの
+別途reviewと後続VAMeter-Edu releaseが必要です。
 
 このViewerのfuture workは、リンクの無いroadmap文言ではなく、GitHub Issueで
 管理します。
@@ -107,7 +121,7 @@ intakeが必要です。
   アナログ計器の答え合わせ用表示補正(analog-meter answer-check display
   correction)。答え合わせ時の表示値だけを補正するpresentation-only correction
   で、CSV・D2B measurement value・measurement pipelineは変更しません。
-  VAMeter-Eduが所有します。現在のbeta.1境界は
+  VAMeter-Eduが所有します。historical beta.1境界のprovenanceは
   [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md)
   を参照してください。
 

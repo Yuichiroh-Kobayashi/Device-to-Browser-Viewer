@@ -14,12 +14,19 @@ is scheduling metadata only and must never become a measurement X coordinate.
 Read [`README.md`](README.md) before editing anything. This repository holds
 two distinct trees and they must not be conflated:
 
-- The device-hosted product Viewer at `src/product/p2-sp/`, documented as
-  current product behavior in
-  [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md),
-  with source/build provenance in
+- The device-hosted product Viewer source lineage at `src/product/p2-sp/`. The
+  qualified release source from this lineage is deployed in stable VAMeter-Edu
+  `v2.0.0`; current deployed behavior and the immutable released-source boundary
+  are documented in the
+  [`README.md` release-state section](README.md#device-hosted-product-viewer) and
+  [VAMeter-Edu current product contract](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/blob/main/docs/product/device-hosted-viewer-contract.md).
+  [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md)
+  is historical beta.1 contract/provenance. Source/build provenance remains in
   [`docs/viewer-source-authority.md`](docs/viewer-source-authority.md) and
-  [`docs/provenance/`](docs/provenance/).
+  [`docs/provenance/`](docs/provenance/). Current Viewer `main` may be newer than
+  the exact Viewer authority shipped in VAMeter-Edu `v2.0.0`; never substitute
+  current HEAD for the released authority without a later reviewed Firmware
+  Viewer/AssetPool intake and VAMeter-Edu release.
 - The development/validation harness at the repository root (`index.html`,
   `src/` outside `src/product/`, `tools/serve.py`).
 

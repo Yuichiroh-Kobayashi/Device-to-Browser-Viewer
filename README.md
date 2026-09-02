@@ -3,9 +3,10 @@
 This repository contains two distinct things. Keep them separate when reading
 or extending this repository:
 
-1. **The device-hosted product Viewer** (`src/product/p2-sp/`) — the Student /
-   Professional Viewer shipped in the stable VAMeter-Edu `v2.0.0` release. The
-   device serves this bundle directly; no PC, cloud account, or relay is
+1. **The device-hosted product Viewer source lineage** (`src/product/p2-sp/`) —
+   the qualified Student / Professional release source from this lineage was
+   shipped in stable VAMeter-Edu `v2.0.0`. The device serves that release bundle
+   directly; no PC, cloud account, or relay is
    required. See [Device-hosted product Viewer](#device-hosted-product-viewer).
 2. **The development / validation harness** (this repository's root
    `index.html`, `src/`, `tools/serve.py`) — a dependency-free,

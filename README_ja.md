@@ -4,9 +4,10 @@
 
 このrepositoryには、性質の異なる2つのものが含まれています。読む・拡張する際は明確に区別してください。
 
-1. **device-hosted product Viewer**(`src/product/p2-sp/`) — VAMeter-Edu安定版
-   `v2.0.0`でリリースされたStudent / Professional Viewerです。
-   deviceがこのbundleを直接配信するため、PC・cloud account・relayは不要です。
+1. **device-hosted product Viewer source lineage**(`src/product/p2-sp/`) —
+   このlineageからqualifiedされたStudent / Professional release sourceが
+   VAMeter-Edu安定版`v2.0.0`でリリースされました。deviceがそのrelease bundleを
+   直接配信するため、PC・cloud account・relayは不要です。
    詳細は[device-hosted product Viewer](#device-hosted-product-viewer)を参照してください。
 2. **development / validation harness**(このrepositoryのroot `index.html`、
    `src/`、`tools/serve.py`) — `d2b-stream/0.1`の`vi-measurement`処理を開発・

@@ -1,10 +1,19 @@
 # Viewer source authority
 
-This document is source and build provenance evidence. It does not describe
-current product behavior; for the current device-hosted product contract, see
-[`docs/product/beta1-device-hosted-viewer-contract.md`](product/beta1-device-hosted-viewer-contract.md).
-For the two-layer split between the device-hosted product Viewer and the
-development/validation harness, see the top of [`README.md`](../README.md).
+This document is source and build provenance evidence, not current product
+behavior authority. The stable device-hosted release record is
+[VAMeter-Edu `v2.0.0`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0),
+published on 2026-09-02. That release serves Viewer source commit
+`e1ebdb1cde8585a37447a66f4c8183654f4c3cda`, source tree
+`8f8426e9af1649f68e66e4f8f432d1b91452e38d`, and bundle
+`4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af`.
+The historical
+[`v2.0.0-beta.1` contract](product/beta1-device-hosted-viewer-contract.md)
+remains provenance evidence. This repository's current `main` can be newer
+than the released Viewer authority and does not retroactively alter the
+published bundle. For the two-layer split between the device-hosted product
+Viewer and the development/validation harness, see the top of
+[`README.md`](../README.md).
 
 1. Device-to-Browser-Viewer base/regression lineage:
    `bef258e16513bd7e12cc15198d97af3203c70f91`

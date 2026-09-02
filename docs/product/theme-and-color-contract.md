@@ -7,6 +7,14 @@ It describes post-beta.1 product source under
 `v2.0.0-beta.1` bundle remains immutable and is not changed by this contract;
 see [`beta1-device-hosted-viewer-contract.md`](beta1-device-hosted-viewer-contract.md).
 
+Release status (2026-09-02): this contract originated after beta.1, and the
+reviewed theme behavior is included in the stable
+[VAMeter-Edu `v2.0.0` Viewer release](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0)
+lineage and bundle
+`4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af`.
+Beta.1 remains immutable, and later Viewer source changes likewise do not
+mutate the published stable bundle.
+
 This is presentation only. It changes no measurement value, validity rule,
 calibration, unit, scale policy, D2B control or binary semantics, CSV output,
 or WebSocket behaviour.

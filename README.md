@@ -1,5 +1,7 @@
 # Device-to-Browser Viewer
 
+For device AP checks, see the Japanese [browser and WebSocket observation guide](docs/development/ap-browser-observation.md).
+
 This repository contains two distinct things. Keep them separate when reading
 or extending this repository:
 

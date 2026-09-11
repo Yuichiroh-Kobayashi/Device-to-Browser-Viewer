@@ -185,10 +185,11 @@ export class GraphPolicyController {
     return enteredStreaming || timebaseReset || streamChanged;
   }
   setWindowSeconds(value) { if (!DISPLAY_WINDOWS.includes(value)) throw new RangeError("window must be 10, 30, or 60 seconds"); if (this.windowSeconds !== value) { this.windowSeconds = value; this.windowGeneration += 1; this.scaleEvaluationIdentity = { voltage: null, current: null }; } }
-  update(records) {
+  update(records, { originTimestampUs = null, rightEdgeTimestampUs = null } = {}) {
     const timestamped = records.filter((record) => typeof record.timestamp_us === "bigint");
+    if (typeof originTimestampUs === "bigint") this.originTimestampUs = originTimestampUs;
     if (this.originTimestampUs === null && timestamped.length) this.originTimestampUs = timestamped[0].timestamp_us;
-    const latest = timestamped.at(-1)?.timestamp_us ?? this.originTimestampUs;
+    const latest = rightEdgeTimestampUs ?? timestamped.at(-1)?.timestamp_us ?? this.originTimestampUs;
     const domain = makeTimeDomain(this.originTimestampUs, latest, this.windowSeconds);
     const active = timestamped.filter((record) => {
       const x = Number(record.timestamp_us - this.originTimestampUs) / 1e6;
@@ -196,7 +197,7 @@ export class GraphPolicyController {
     });
     for (const channel of ["voltage", "current"]) {
       const latestValid = active.findLast((record) => finiteValue(record, channel) !== null);
-      const evaluationIdentity = `${this.epochGeneration}:${this.windowGeneration}:${latestValid?.stream_id ?? "none"}:${latestValid?.sequence?.toString() ?? "none"}`;
+      const evaluationIdentity = `${this.epochGeneration}:${this.windowGeneration}:${rightEdgeTimestampUs ?? "live"}:${latestValid?.stream_id ?? "none"}:${latestValid?.sequence?.toString() ?? "none"}`;
       if (evaluationIdentity !== this.scaleEvaluationIdentity[channel]) {
         const scales = channel === "voltage" ? VOLTAGE_SCALES : CURRENT_SCALES;
         const scaleUpdate = updateStagedScale(scales, this.scaleIndices[channel], active.map((record) => finiteValue(record, channel)));

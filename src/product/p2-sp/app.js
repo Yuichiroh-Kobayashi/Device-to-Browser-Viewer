@@ -7,6 +7,7 @@ import { GraphPolicyController } from "./graph/graph-core.js";
 import { GraphWaveformCanvas } from "./graph/waveform-canvas.js";
 import { StudentPrimaryActionController } from "./student-primary-action-controller.js";
 import { createThemeController, createThemeMediaQuery } from "./presentation/theme-controller.js";
+import { HistoryReviewController, historyReviewMarkup, updateHistoryReview } from "./presentation/history-review.js";
 
 const BUILD_INCLUDE_PROFESSIONAL = typeof __INCLUDE_PROFESSIONAL__ === "undefined" ? true : __INCLUDE_PROFESSIONAL__;
 
@@ -47,6 +48,8 @@ export function createViewerApplication({
   const actionDiagnostics = createBoundedActionDiagnostics();
   const studentPrimaryAction = new StudentPrimaryActionController(owner);
   const graphPolicy = new GraphPolicyController({ windowSeconds: owner.model.displayWindowSeconds });
+  const historyReview = new HistoryReviewController();
+  const reviewState = () => historyReview.snapshot(owner.model.historySummary(), owner.stoppedHistoryReady, owner.model.displayWindowSeconds);
   // Application-lifetime presentation state. It is deliberately not reachable
   // from owner/adapter/model, and is rebuilt as "system" on every construction.
   const theme = createThemeController({ media: themeMedia, root: themeRoot });
@@ -59,7 +62,9 @@ export function createViewerApplication({
     if (!waveforms) return;
     const records = owner.model.recordSnapshot();
     const markers = owner.model.markerSnapshot();
-    const frames = graphPolicy.update(records);
+    const review = reviewState();
+    const frames = graphPolicy.update(records, { originTimestampUs: review.originTimestampUs,
+      rightEdgeTimestampUs: review.enabled ? review.rightEdge : null });
     if (!waveforms.voltage.canvas.closest("[data-graph-panel]")?.hidden) waveforms.voltage.draw(frames.voltage, markers, frames.precision);
     if (!waveforms.current.canvas.closest("[data-graph-panel]")?.hidden) waveforms.current.draw(frames.current, markers, frames.precision);
   });
@@ -83,6 +88,7 @@ export function createViewerApplication({
   }
 
   function update(mode) {
+    updateHistoryReview(root, owner.model.historySummary(), reviewState());
     const diagnostic = actionDiagnostics.snapshot();
     if (BUILD_INCLUDE_PROFESSIONAL) {
       if (professionalModeAllowed(BUILD_INCLUDE_PROFESSIONAL, includeProfessional, mode)) {
@@ -101,7 +107,7 @@ export function createViewerApplication({
   // past the whole diagnostics list.
   function controlsMarkup(mode) {
     const toggle = BUILD_INCLUDE_PROFESSIONAL && includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : "";
-    return `${displayWindowMarkup(owner.model.displayWindowSeconds)}${toggle}`;
+    return `${displayWindowMarkup(owner.model.displayWindowSeconds)}${toggle}${historyReviewMarkup()}`;
   }
 
   function mount(mode) {
@@ -119,12 +125,20 @@ export function createViewerApplication({
       try {
         setDisplayWindowSeconds(owner, displayWindow.value);
         graphPolicy.setWindowSeconds(owner.model.displayWindowSeconds);
+        updateHistoryReview(root, owner.model.historySummary(), reviewState());
         waveformRender.request();
       } catch {
         displayWindow.value = String(owner.model.displayWindowSeconds);
       }
     };
     const toggle = root.querySelector("#toggle");
+    const moveHistory = (action, position = null) => {
+      historyReview.move(action, owner.model.historySummary(), owner.stoppedHistoryReady, owner.model.displayWindowSeconds, position);
+      presentation.update();
+    };
+    for (const action of ["back", "forward", "latest"]) root.querySelector(`[data-history-${action}]`).onclick = () => moveHistory(action);
+    const position = root.querySelector("[data-history-position]");
+    position.oninput = () => moveHistory("position", position.value);
     if (toggle) toggle.onclick = () => controller.toggle();
     const themeButton = root.querySelector("[data-theme-toggle]");
     if (themeButton) themeButton.onclick = () => theme.toggle();
@@ -176,6 +190,7 @@ export function createViewerApplication({
     theme,
     actionDiagnostics,
     graphPolicy,
+    historyReview,
     destroy() {
       if (destroyed) return;
       destroyed = true;

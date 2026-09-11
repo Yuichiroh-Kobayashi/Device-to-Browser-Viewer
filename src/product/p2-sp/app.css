@@ -87,6 +87,11 @@ button:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2p
 .deployment[data-deployment-status="matched"] { color: var(--status-ready); border-inline-start-color: var(--status-ready); }
 .deployment[data-deployment-status="unknown"],.deployment[data-deployment-status="mismatched"] { color: var(--status-fatal); border-inline-start-color: var(--status-fatal); }
 select { min-height: 44px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
+.history-review { margin-block: 1rem; }
+.history-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.history-position { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.history-position input { flex: 1 1 12rem; min-width: 0; width: 100%; min-height: 44px; accent-color: var(--focus-inner); }
+input:focus-visible,select:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2px; box-shadow: 0 0 0 6px var(--focus-outer); }
 
 @media (max-width: 599px) {
   .graphs { grid-template-columns: 1fr; }
@@ -110,6 +115,7 @@ select { min-height: 44px; color: var(--text); background: var(--surface); borde
   .values output,.graphs section,.professional-diagnostics,button,select { border: 1px solid CanvasText; forced-color-adjust: auto; }
   .primary-action button,.primary-action button[data-action-kind] { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
   button:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; box-shadow: none; }
+  input:focus-visible,select:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; box-shadow: none; }
   .quality,.error,.deployment { color: CanvasText; border-inline-start-color: CanvasText; }
   .deployment[data-deployment-status="matched"],.deployment[data-deployment-status="unknown"],.deployment[data-deployment-status="mismatched"],.error:not(:empty) { color: CanvasText; border-inline-start-color: CanvasText; }
 }

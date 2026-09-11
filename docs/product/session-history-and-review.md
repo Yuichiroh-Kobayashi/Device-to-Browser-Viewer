@@ -200,6 +200,10 @@ The visible viewport and Student display profile never filter export columns
 or rows. The click takes a synchronous snapshot from the sole history ring;
 there is no second measurement store, independent decoder, or network request.
 Export does not move the review cursor, mutate records, or touch transport.
+X dropdown/buttons/pinch, horizontal pan, V/I dropdown/buttons/pinch, and mode
+switching leave CSV bytes identical for the same retained epoch. A failed hello
+or start before acceptance restores the old completed epoch's export eligibility
+on CLOSED; an accepted replacement epoch cannot inherit that completion.
 
 Schema and byte representation:
 
@@ -207,7 +211,10 @@ Schema and byte representation:
 voltage,current,elapsed_ms
 ```
 
-- UTF-8 without BOM, CRLF after each row including the last row.
+- UTF-8 without BOM, CRLF after each row including the last row. Firmware
+  recorder CSV uses LF. The column schema and measurement semantics align;
+  Viewer and Firmware CSV files are not byte-identical. The Firmware recorder
+  is unchanged.
 - Valid voltage/current: finite JavaScript numeric value in V/A, converted to
   its round-trippable Number string. A signed negative current remains signed.
   This includes the precision of the accepted D2B float32 value; it is not the
@@ -239,10 +246,14 @@ Blob URL and one cleanup timer. The URL is revoked after 60 seconds, before a
 subsequent export, on error, or when the application is destroyed. The temporary
 anchor is removed immediately after activation. The confirmation says download
 was requested; it does not assert that an OS file was successfully saved.
+Serialization failure records only `csv-serialize-failed`; browser download
+failure records only `csv-download-failed` in the existing bounded eight-entry
+action diagnostic. The UI may use the same generic error text. Raw exception
+messages, measurement text and identifiers are never copied into diagnostics.
 
 ### #21 verification
 
-Base: #20 commit `a3117a6ef420d2017f7b27a0343d750e86df7ad2`, tree
+Initial #21 base: #20 commit `a3117a6ef420d2017f7b27a0343d750e86df7ad2`, tree
 `d6fee4c06259e9c85947423842ff45499f9460eb`. Before editing, materialization and
 all 14 inherited product files passed. After #21, the same commands above pass
 all 15 product files: 90 named tests + 4 script gates = 94 checks. Root harness
@@ -258,3 +269,12 @@ narrow viewport rendering remain target-browser checks. No physical validation,
 classroom validation, Firmware integration, or permission to merge is implied.
 Final committed #21 candidate identity and independent V1 two-run evidence are
 recorded in its stacked Draft PR, separately from #20's candidate.
+
+Corrective propagation uses a normal merge of #22 commit
+`9a655f48f14e8464b45ee3a8115456f02410f815` (tree
+`113f1c892090313031baef21d01dabf0c25f84b5`), merge commit
+`1ae77af7a06107a7cd9745844f6ece854ca76fd6`. Added host coverage fixes
+CSV independence from all graph interactions, hello/start timeout recovery,
+and distinct bounded diagnostic categories. Final counts and two-run V1
+identities remain in Draft PR #23 as PROVISIONAL DEVELOPMENT BUILD, pending
+independent review; they are not final Firmware intake authority.

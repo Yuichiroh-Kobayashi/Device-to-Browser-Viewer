@@ -10,7 +10,7 @@ export function createBoundedActionDiagnostics(capacity = 8) {
   let count = 0;
   return Object.freeze({
     record(action) {
-      const safeAction = ["open", "start", "stop", "close"].includes(action) ? action : "unknown";
+      const safeAction = ["open", "start", "stop", "close", "csv-serialize-failed", "csv-download-failed"].includes(action) ? action : "unknown";
       count += 1;
       entries.push(safeAction);
       if (entries.length > capacity) entries.shift();

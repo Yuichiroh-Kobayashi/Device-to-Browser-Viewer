@@ -193,12 +193,23 @@ export function createViewerApplication({
     const position = root.querySelector("[data-history-position]");
     position.oninput = () => moveHistory("position", position.value);
     root.querySelector("[data-history-export]").onclick = () => {
+      const failed = (category) => {
+        actionDiagnostics.record(category);
+        presentation.update();
+        root.querySelector("[data-history-export-result]").textContent = "CSVを保存できませんでした。 / CSV export unavailable.";
+      };
+      let csv;
       try {
-        const csv = createStoppedHistoryCsv(owner.model, owner.stoppedHistoryReady);
+        csv = createStoppedHistoryCsv(owner.model, owner.stoppedHistoryReady);
+      } catch {
+        failed("csv-serialize-failed");
+        return;
+      }
+      try {
         csvDownload.save(csv, historyCsvFilename());
         root.querySelector("[data-history-export-result]").textContent = "CSVの保存を要求しました。 / Download requested.";
       } catch {
-        root.querySelector("[data-history-export-result]").textContent = "CSVを保存できませんでした。 / CSV export unavailable.";
+        failed("csv-download-failed");
       }
     };
     if (toggle) toggle.onclick = () => controller.toggle();

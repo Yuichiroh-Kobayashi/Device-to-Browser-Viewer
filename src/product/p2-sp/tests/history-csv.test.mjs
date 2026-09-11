@@ -3,6 +3,84 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { createLocalCsvDownload, createStoppedHistoryCsv, csvExportState, formatElapsedMilliseconds, historyCsvFilename } from "../history-csv.js";
 import { fixture } from "./history-fixture.mjs";
+import { CURRENT_SCALES, DISPLAY_WINDOWS, VOLTAGE_SCALES } from "../graph/graph-core.js";
+
+test("every stopped presentation input leaves full CSV bytes identical in Student and Professional", async () => {
+  const saved = [];
+  const f = fixture({ csvDownload: { save(csv) { saved.push(csv); }, dispose() {} } });
+  try {
+    await f.start();
+    f.data(1_000_000n, { voltage: 2.5, current: -0.03125 }); f.data(1_040_001n, { validMask: 1 });
+    f.data(81_000_000n, { flags: 4, sequence: 9n }); f.flush(); await f.stop();
+    const expected = createStoppedHistoryCsv(f.owner.model, true);
+    const records = f.owner.model.recordSnapshot(); const summary = f.owner.model.summary(); const counts = { ...f.counts };
+    const decoder = f.owner.adapter.decoderState;
+    const exportSame = () => { f.flush(); f.root.querySelector("[data-history-export]").onclick(); assert.equal(saved.at(-1), expected); };
+    for (const mode of ["student", "professional"]) {
+      f.app.controller.setMode(mode); exportSame();
+      for (const seconds of DISPLAY_WINDOWS) {
+        f.window(seconds); exportSame(); f.zoom("x", "in"); exportSame(); f.zoom("x", "out"); exportSame();
+      }
+      for (const [channel, scales] of [["voltage", VOLTAGE_SCALES], ["current", CURRENT_SCALES]]) {
+        for (const value of scales) { f.scale(channel, value); exportSame(); f.zoom(channel, "in"); exportSame(); f.zoom(channel, "out"); exportSame(); }
+        // Horizontal pinch, vertical pinch, horizontal pan, including large steps.
+        for (const axis of ["x", "y"]) {
+          f.pointer(channel, "down", 1, 100, 50); f.pointer(channel, "down", 2, 200, 100);
+          f.pointer(channel, "move", 2, axis === "x" ? 600 : 200, axis === "y" ? 270 : 100); exportSame();
+          f.pointer(channel, "up", 2); f.pointer(channel, "up", 1);
+        }
+        f.pointer(channel, "down", 3, 100, 100); f.pointer(channel, "move", 3, 400, 100); exportSame(); f.pointer(channel, "up", 3);
+      }
+      f.position(0); exportSame(); f.click("forward"); exportSame(); f.click("back"); exportSame(); f.click("latest"); exportSame();
+    }
+    assert.ok(saved.length > 100);
+    assert.deepEqual(f.owner.model.recordSnapshot(), records); assert.deepEqual(f.owner.model.summary(), summary);
+    assert.strictEqual(f.owner.adapter.decoderState, decoder); assert.deepEqual(f.counts, counts);
+  } finally { f.dispose(); }
+});
+
+for (const failure of ["hello", "start"]) test(`same complete CSV recovers after pre-acceptance ${failure} timeout`, async () => {
+  const saved = [];
+  const f = fixture({ csvDownload: { save(csv) { saved.push(csv); }, dispose() {} } });
+  try {
+    await f.start(); f.data(1n); f.data(12_500_001n); f.flush(); await f.stop();
+    const expected = createStoppedHistoryCsv(f.owner.model, true);
+    const epoch = f.owner.model.historyEpoch;
+    if (failure === "hello") {
+      await f.owner.actions.close(); const opening = f.owner.actions.open(); f.socket().open(); await opening;
+    } else await f.owner.actions.start();
+    assert.equal(f.root.querySelector("[data-history-export]").disabled, true);
+    f.timeout(); f.flush();
+    assert.equal(f.owner.model.historyEpoch, epoch);
+    assert.equal(f.root.querySelector("[data-history-export]").disabled, false);
+    const counts = { ...f.counts };
+    f.root.querySelector("[data-history-export]").onclick(); assert.equal(saved[0], expected); assert.deepEqual(f.counts, counts);
+    await f.start(2); assert.equal(f.root.querySelector("[data-history-export]").disabled, true);
+    f.socket().disconnect(); assert.equal(f.owner.stoppedHistoryReady, false);
+  } finally { f.dispose(); }
+});
+
+test("serialization and browser-save failures have distinct bounded safe diagnostics without raw error exposure", async () => {
+  for (const category of ["csv-serialize-failed", "csv-download-failed"]) {
+    const hostile = "secret-device-SSID <img src=x onerror=alert(1)>";
+    let saves = 0;
+    const f = fixture({ csvDownload: { save() { saves++; throw new Error(hostile); }, dispose() {} } });
+    try {
+      await f.start(); f.data(0n); f.data(20_000_000n); f.flush(); await f.stop();
+      const records = f.owner.model.recordSnapshot(); const original = f.owner.model.recordSnapshot;
+      const counts = { ...f.counts };
+      if (category === "csv-serialize-failed") f.owner.model.recordSnapshot = () => { throw new Error(hostile); };
+      for (let i = 0; i < 24; i++) f.root.querySelector("[data-history-export]").onclick();
+      f.owner.model.recordSnapshot = original;
+      assert.deepEqual(f.app.actionDiagnostics.snapshot(), { count: 24, lastAction: category, retained: Array(8).fill(category) });
+      assert.equal(saves, category === "csv-serialize-failed" ? 0 : 24);
+      f.app.controller.setMode("professional"); f.flush();
+      const text = f.root.descendants().map(n => n.textContent).join(" ");
+      assert.ok(text.includes(category)); assert.ok(!text.includes(hostile)); assert.ok(!text.includes("secret-device"));
+      assert.deepEqual(f.owner.model.recordSnapshot(), records); assert.deepEqual(f.counts, counts);
+    } finally { f.dispose(); }
+  }
+});
 
 test("exact header, numeric/blank cells, signed current, real sub-ms delta and gap timing", async () => {
   const f = fixture();

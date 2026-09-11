@@ -1,0 +1,48 @@
+{
+  "comparison_source": "81226e7b39410ac673c1b46a9b76eab6084a4f19",
+  "baseline_runs": 2,
+  "candidate_runs": 2,
+  "baseline_builder_exit": [
+    0,
+    0
+  ],
+  "candidate_builder_exit": [
+    1,
+    1
+  ],
+  "host_tests_each_run": {
+    "product": 74,
+    "protocol": 30,
+    "live_gate": 13
+  },
+  "baseline_output": {
+    "bundle_id": "be563812df74534c09d15bd67c5015519da3eca551e9e8812f6096a3343a58cb",
+    "css_gzip": {
+      "bytes": 2385,
+      "path": "app.250905db503bf774bcab87f29e44ceddd63c949e798cc72c55864b933a8cfafb.css.gz",
+      "sha256": "250905db503bf774bcab87f29e44ceddd63c949e798cc72c55864b933a8cfafb"
+    },
+    "d2b_authority_commit": "b30ad676922af73448952d5a9cac312467a944f9",
+    "index": {
+      "bytes": 573,
+      "path": "index.html",
+      "sha256": "88c39f443ef49d477d558f86dfd4b02345ed49e5a0d1123ce92538b7dafc54b7"
+    },
+    "js_gzip": {
+      "bytes": 25809,
+      "path": "app.46bafb3d23345cd8dc48533c4c59c595ef6b0ae5cf051158dae509a20f56cbe4.js.gz",
+      "sha256": "46bafb3d23345cd8dc48533c4c59c595ef6b0ae5cf051158dae509a20f56cbe4"
+    },
+    "manifest": {
+      "bytes": 1364,
+      "path": "asset-manifest.json",
+      "sha256": "be563812df74534c09d15bd67c5015519da3eca551e9e8812f6096a3343a58cb"
+    },
+    "stored_bytes": 30131,
+    "two_run_determinism": "PASS",
+    "viewer_source_commit": "81226e7b39410ac673c1b46a9b76eab6084a4f19"
+  },
+  "candidate_output": null,
+  "candidate_builder_status": "HOLD",
+  "failure": "enhanced-resolve ResolverFactory.js:235: process.config.variables.node_relative_path is undefined"
+}

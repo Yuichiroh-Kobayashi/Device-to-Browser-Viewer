@@ -1,0 +1,23 @@
+{
+  "node": "24.21.0",
+  "npm": "11.19.0",
+  "qualified_uses": [
+    "host-tests"
+  ],
+  "unqualified_uses": [
+    "product-builder",
+    "physical-client",
+    "windows-native"
+  ],
+  "platforms": {
+    "linux-x64": {
+      "archive": "node-v24.21.0-linux-x64.tar.xz",
+      "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz",
+      "sha256": "fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6"
+    }
+  },
+  "verification": {
+    "keyring_url": "https://github.com/nodejs/release-keys/raw/HEAD/gpg/pubring.kbx",
+    "keyring_sha256": "610b8d249da3d5733f5a128def2dd0294dbbf5b5713e6ca2529db8db419dee00"
+  }
+}

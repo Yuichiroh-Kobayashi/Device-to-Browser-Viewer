@@ -19,3 +19,6 @@ __pycache__/
 
 # Generated from the pinned historical Viewer Git tree; never commit this copy.
 /src/product/source-export/
+
+# Project-local verified Node runtime and download evidence.
+.tools/

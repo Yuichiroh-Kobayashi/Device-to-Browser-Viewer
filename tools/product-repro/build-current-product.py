@@ -38,6 +38,8 @@ CURRENT_PRODUCT_ALLOWLIST = frozenset({
     "app.js",
     "runtime-owner.js",
     "session-history-model.js",
+    "history-csv.js",
+    "tests/history-csv.test.mjs",
     "presentation/history-review.js",
     "tests/session-history.test.mjs",
     "tests/history-review.test.mjs",

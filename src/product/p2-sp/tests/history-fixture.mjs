@@ -69,7 +69,7 @@ class FakeNode {
 }
 
 
-export function fixture() {
+export function fixture({ csvDownload } = {}) {
   const counts = { construct: 0, send: 0, close: 0 };
   const sockets = [];
   const original = globalThis.WebSocket;
@@ -91,7 +91,7 @@ export function fixture() {
   const animationScheduler = { requestAnimationFrame(fn) { const id = ++frameId; frames.set(id, fn); return id; }, cancelAnimationFrame(id) { frames.delete(id); } };
   const owner = createRuntimeOwner({ scheduler });
   const root = new FakeNode("main", {});
-  const app = createViewerApplication({ root, owner, animationScheduler, themeMedia: null, themeRoot: null });
+  const app = createViewerApplication({ root, owner, animationScheduler, themeMedia: null, themeRoot: null, csvDownload });
   let streamId = 1; let sequence = 0n; let timestampUs = 0n;
   const socket = () => sockets.at(-1);
   return {

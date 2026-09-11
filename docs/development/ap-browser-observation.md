@@ -3,9 +3,11 @@
 ## 目的
 
 デバイスが配信するViewerについて、AP参加、HTTP取得、WebSocket、表示のどこで
-止まったかを区別する。[共通の観測・時計・保存手順](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming/issues/8)
+止まったかを区別する。[共通の観測・時計・保存手順][common-observation]
 と製品の操作手順を併用する。rootの開発用harnessと、`src/product/p2-sp/`の
 device-hosted Viewerは別物である。
+共通手順は[D2B PR #9](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming/pull/9)の
+未merge文書をcommit固定で参照する。運用時は承認された文書revisionを実行設定へ指定する。
 
 - [ ] 製品、Firmware、Viewer bundle、端末・OS・browser版を記録した。
 - [ ] 必要なページ・手順・開始／中止／保存の操作を端末へ用意した。
@@ -27,7 +29,7 @@ binary readbackとは区別し、UTCとuptimeの差だけで起動の連続性�
 | Browser | 接続前と試験中の操作 | 保存方法と限界 |
 | --- | --- | --- |
 | Windows Edge | F12でDevToolsを開き、NetworkのPreserve logを有効にする。HTTP requestとWSのMessagesを分けて見る。製品URLを通常tabで開き、前面を保つ | 必要な時系列とerror/closeを保存する。HARやrequestには秘密が入り得るため、原本は非公開。DevToolsが使えない場合はその観測を未実施とする |
-| iPad Safari | 「設定」→「Wi-Fi」で製品APへ参加後、通常のSafariで製品URLを明示的に開く。自動表示された接続案内画面だけで試験を終えない。試験中は前面を保つ | 通常のiPad単体ではEdge相当のWS frame一覧を取得できない。画面の状態と操作時刻を保存し、WS受信内容は別途許可されたclient記録で補う。画面だけでerror-before-closeを合格にしない |
+| iPad Safari | 「設定」→「Wi-Fi」で製品APへ参加後、通常のSafariで製品URLを明示的に開く。自動表示された接続案内画面だけで試験を終えない。試験中は前面を保つ | 通常のiPad単体ではEdge相当のWS frame一覧を取得できない。画面の状態と操作時刻を保存し、WS受信内容は別途許可されたclient記録で補う。別clientの結果をiPad自身のframe受信の証拠にはしない。画面だけでerror-before-closeを合格にしない |
 
 端末が既知Wi-Fiへ自動的に戻る可能性を準備時に確認する。設定変更が必要なら対象network、
 管理者の許可、元の設定、復元操作を記録する。管理された端末の設定を無断で変更しない。
@@ -74,11 +76,17 @@ error frameの受信、close event、製品ownerの解放は別の確認項目�
 
 ## 終了と保存
 
-試験終了と理由を記録し、製品手順に従って停止する。browser、通信client、シリアル観測器の
-writerを終了させてから、原本と最終summaryを確認する。active fileを別processで追尾しない。
-保存結果、相対path、byte数、SHA-256を照合し、変更した端末設定は記録した手順で戻す。
+宣言した判定対象区間の終了と理由を記録し、正常停止・owner解放を期限・停止条件まで観測する。
+同じ記録単位に含める、許可済みの端末設定復元・後片付けとその記録を完了する。
+その後は[共通手順の「終了と保存」][common-finalization]に従い、新規取得の停止、
+有効な書込みhandleでのfinalization、writer・最終summaryの終了確認、inventory/checksum・照合・封印を行う。
+active fileは追尾せず、強制終了や保存失敗は不完全な記録として残す。
+封印後に端末設定を戻す設計なら、その結果を封印対象外の別記録へ保存すると事前に定める。
 再接続や再実行は新しい記録とし、過去の失敗を書き換えない。
 
 公開例に認証値、SSID/password、個体識別子、個人path、学校情報を含めない。
 この手順書の文書確認やHOST試験は、Edge/iPadと実機の確認を完了したという意味ではない。
 HOST確認、build確認、実browser・実機未確認を分けて報告する。
+
+[common-observation]: https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming/blob/08751ca9b2201916c817096925286f1e675e0bf2/docs/qualification/practical-observation.md
+[common-finalization]: https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming/blob/08751ca9b2201916c817096925286f1e675e0bf2/docs/qualification/practical-observation.md#終了と保存

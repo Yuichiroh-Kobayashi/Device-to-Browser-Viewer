@@ -38,14 +38,23 @@ export class GraphInteractionController {
     surface.onpointerup = (event) => this.end(event);
     surface.onpointercancel = (event) => this.end(event);
     surface.onlostpointercapture = (event) => this.end(event);
+    this.syncOwnership();
+  }
+  syncOwnership() {
+    const enabled = this.getState().review.enabled;
+    if (!enabled) this.cancel();
+    this.surface.setAttribute("data-graph-interaction", enabled ? "graph" : "browser");
   }
   down(event) {
+    const state = this.getState();
+    // Browser gestures may deliver moves before pointercancel. Never acquire
+    // an application pointer/baseline/capture outside stopped review.
+    if (!state.review.enabled) { this.cancel(); return; }
     if (event.button !== 0 || this.pointers.size >= 2 || this.pointers.has(event.pointerId)) return;
     // After a pinch loses a finger, wait for every original pointer to leave.
     if (this.mode === "pinch" && this.pointers.size < 2) return;
     this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     this.surface.setPointerCapture?.(event.pointerId);
-    const state = this.getState();
     const { pw, ph } = plotGeometry(this.surface.getBoundingClientRect());
     if (this.pointers.size === 1) {
       this.mode = "pan";
@@ -59,14 +68,16 @@ export class GraphInteractionController {
     }
   }
   move(event) {
+    const state = this.getState();
+    if (!state.review.enabled) { this.cancel(); return; }
     if (!this.pointers.has(event.pointerId)) return;
     this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    const state = this.getState(); const start = this.baseline;
+    const start = this.baseline;
     if (this.mode === "pinch") {
       if (this.pointers.size !== 2) return;
       const current = separation(this.pointers);
       this.axis ??= pinchAxis(start.separation, current, start.pw, start.ph);
-      if (!this.axis || (this.axis === "y" && !state.review.enabled)) return;
+      if (!this.axis) return;
       const dimension = this.axis === "x" ? start.pw : start.ph;
       const floor = dimension * PINCH_SEPARATION_FLOOR;
       const ratio = Math.max(floor, current[this.axis]) / Math.max(floor, start.separation[this.axis]);
@@ -76,7 +87,7 @@ export class GraphInteractionController {
       const target = scales[quantizePinch(scales, initial, ratio, previous)];
       if (this.axis === "x") this.changeWindow(target);
       else this.changeScale(this.channel, target);
-    } else if (state.review.enabled && typeof start.rightEdge === "bigint") {
+    } else if (typeof start.rightEdge === "bigint") {
       const delta = (event.clientX - start.x) / start.pw * start.window * 1e6;
       if (Number.isFinite(delta)) this.panTo(start.rightEdge - BigInt(Math.round(delta)));
     }

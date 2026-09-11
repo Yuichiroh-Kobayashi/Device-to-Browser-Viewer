@@ -22,6 +22,7 @@ class FakeNode {
     this.onchange = null;
     this.dataset = {};
     this.captured = new Set();
+    this.captureCalls = 0;
     this.rect = { width: 640, height: 288 };
     for (const [name, value] of Object.entries(attributes)) {
       if (name.startsWith("data-")) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
@@ -33,7 +34,7 @@ class FakeNode {
   getAttribute(name) { return this.attributes[name] ?? null; }
   getContext() { return this.context; }
   getBoundingClientRect() { return this.rect; }
-  setPointerCapture(id) { this.captured.add(id); }
+  setPointerCapture(id) { this.captureCalls++; this.captured.add(id); }
   hasPointerCapture(id) { return this.captured.has(id); }
   releasePointerCapture(id) { this.captured.delete(id); this.onlostpointercapture?.({ pointerId: id }); }
   matches(selector) {

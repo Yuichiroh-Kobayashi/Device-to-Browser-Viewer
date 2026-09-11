@@ -120,6 +120,7 @@ export function createViewerApplication({
   function update(mode) {
     updateHistoryReview(root, owner.model.historySummary(), reviewState());
     syncGraphControls(root, graphPolicy, reviewState().enabled);
+    interactions.forEach(interaction => interaction.syncOwnership());
     const diagnostic = actionDiagnostics.snapshot();
     if (BUILD_INCLUDE_PROFESSIONAL) {
       if (professionalModeAllowed(BUILD_INCLUDE_PROFESSIONAL, includeProfessional, mode)) {

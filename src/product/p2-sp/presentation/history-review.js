@@ -7,7 +7,7 @@ export class HistoryReviewController {
   constructor() { this.epoch = null; this.rightEdgeTimestampUs = null; }
 
   snapshot(history, ready, windowSeconds) {
-    if (this.epoch !== history.epoch || !ready) this.rightEdgeTimestampUs = null;
+    if (this.epoch !== history.epoch) this.rightEdgeTimestampUs = null;
     this.epoch = history.epoch;
     const enabled = ready === true && history.count > 0;
     const latest = history.latestTimestampUs;
@@ -35,6 +35,13 @@ export class HistoryReviewController {
       const step = BigInt(windowSeconds) * 500_000n;
       this.rightEdgeTimestampUs = clamp(state.rightEdge + (action === "back" ? -step : step), state.earliest, state.latest);
     } else return false;
+    return true;
+  }
+
+  panTo(timestampUs, history, ready, windowSeconds) {
+    const state = this.snapshot(history, ready, windowSeconds);
+    if (!state.enabled || typeof timestampUs !== "bigint") return false;
+    this.rightEdgeTimestampUs = clamp(timestampUs, state.earliest, state.latest);
     return true;
   }
 }

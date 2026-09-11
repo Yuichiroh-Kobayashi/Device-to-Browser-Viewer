@@ -1,4 +1,10 @@
-import { formatScaleReadout, formatYAxisTick, makeXAxisTicks, tickLabelX } from "./graph-core.js";
+import { formatYAxisTick, makeXAxisGrid, tickLabelX } from "./graph-core.js";
+
+export function plotGeometry(rect) {
+  const width = Math.max(1, Math.floor(rect.width)); const height = Math.max(1, Math.floor(rect.height));
+  const pad = { left: 64, right: 34, top: 36, bottom: 34 };
+  return { width, height, pad, pw: Math.max(1, width - pad.left - pad.right), ph: Math.max(1, height - pad.top - pad.bottom) };
+}
 
 const style = (canvas, role, fallback) => getComputedStyle(canvas).getPropertyValue(`--graph-${role}`).trim() || fallback;
 export function formatMarkerLabel(marker) {
@@ -7,24 +13,24 @@ export function formatMarkerLabel(marker) {
   return `${base}${causes.length ? `: ${causes.join(", ")}` : ""}`.slice(0, 56);
 }
 export class GraphWaveformCanvas {
-  constructor(canvas, { channel, title, unit, onResize = null }) {
+  constructor(canvas, { channel, title, unit, onResize = null, readout = null }) {
     if (!canvas?.getContext) throw new TypeError("a canvas element is required");
     this.canvas = canvas; this.context = canvas.getContext("2d"); this.channel = channel; this.title = title; this.unit = unit; this.onResize = onResize;
+    this.readout = readout;
     this.observer = typeof ResizeObserver === "function" ? new ResizeObserver(() => this.onResize?.()) : null;
     this.observer?.observe(canvas);
   }
   destroy() { this.observer?.disconnect(); }
   draw(frame, markers = [], precision = 0) {
-    const rect = this.canvas.getBoundingClientRect(); const width = Math.max(1, Math.floor(rect.width)); const height = Math.max(1, Math.floor(rect.height));
+    const { width, height, pad, pw, ph } = plotGeometry(this.canvas.getBoundingClientRect());
     const ratio = Math.max(1, globalThis.devicePixelRatio || 1); if (this.canvas.width !== width * ratio || this.canvas.height !== height * ratio) { this.canvas.width = width * ratio; this.canvas.height = height * ratio; }
     const c = this.context; c.setTransform(ratio, 0, 0, ratio, 0, 0); c.clearRect(0, 0, width, height); c.fillStyle = style(this.canvas, "background", "#ffffff"); c.fillRect(0, 0, width, height);
-    const pad = { left: 64, right: 34, top: 36, bottom: 34 }; const pw = Math.max(1, width - pad.left - pad.right); const ph = Math.max(1, height - pad.top - pad.bottom);
     c.font = "600 13px system-ui,sans-serif"; c.fillStyle = style(this.canvas, "foreground", "#18212f"); c.fillText(`${this.title} (${this.unit})`, 10, 17);
-    const readout = formatScaleReadout(frame.scale, this.channel); c.textAlign = "right"; c.fillText(readout, width - 10, 17); c.textAlign = "left";
     c.font = "11px ui-monospace,monospace"; c.strokeStyle = style(this.canvas, "grid", "#8a8a8a"); c.lineWidth = 1;
     for (let i = 0; i <= 9; i += 1) { const y = pad.top + ph * (9 - i) / 9; c.beginPath(); c.moveTo(pad.left, y); c.lineTo(pad.left + pw, y); c.stroke(); c.fillStyle = style(this.canvas, "foreground", "#18212f"); c.fillText(formatYAxisTick(i * frame.scale, this.channel, frame.scale), 3, y + 4); }
     c.strokeStyle = style(this.canvas, "zero-boundary", "#4a5666"); c.beginPath(); c.moveTo(pad.left, pad.top + ph); c.lineTo(pad.left + pw, pad.top + ph); c.stroke();
-    const ticks = makeXAxisTicks(frame.domain, precision, pw);
+    const { ticks, step } = makeXAxisGrid(frame.domain, precision, pw);
+    if (this.readout) this.readout.textContent = `${step} 秒/目盛   ${frame.scale} ${this.unit}/目盛`;
     c.strokeStyle = style(this.canvas, "grid", "#8a8a8a");
     for (const tick of ticks) { const x = pad.left + (tick.value - frame.domain.minimum) / (frame.domain.maximum - frame.domain.minimum) * pw; c.beginPath(); c.moveTo(x, pad.top); c.lineTo(x, pad.top + ph); c.stroke(); c.fillText(tick.label, tickLabelX(x, c.measureText(tick.label).width, width), height - 11); }
     c.fillText("s", width - 12, height - 11);

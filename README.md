@@ -74,7 +74,7 @@ those remain development-only capabilities of the harness described below.
 Post-v2 product source adds bounded measurement history, stopped-session
 review and browser-side CSV export
 ([contract and validation boundaries](docs/product/session-history-and-review.md),
-Related to #20 / #21). This candidate behavior does not update the stable bundle above.
+Related to #20 / #21 / #24). This candidate behavior does not update the stable bundle above.
 
 The product's missing import tree is reproducible from pinned Git history. From
 a clean checkout, run:

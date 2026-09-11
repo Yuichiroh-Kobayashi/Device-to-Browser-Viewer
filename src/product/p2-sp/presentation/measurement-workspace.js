@@ -1,6 +1,7 @@
 import { presentError, qualityFor, runtimeValueState } from "./view-state.js";
 import { formatStudentValue } from "../graph/graph-core.js";
 import { themeControlMarkup } from "./theme-controller.js";
+import { yScaleMarkup } from "./graph-controls.js";
 
 /**
  * The measurement workspace -- header, deployment line, Start/Stop, value
@@ -46,8 +47,8 @@ export function measurementWorkspaceMarkup(themeLabel) {
     <div class="primary-action"><button data-student-primary-action data-action-kind="disabled" disabled>測定開始 / Start</button></div>
     <div class="values"><output data-value-panel="voltage" data-live="voltage"></output><output data-value-panel="current" data-live="current"></output></div>
     <div class="graphs" data-student-graphs>
-      <section class="graph-panel" data-graph-panel="voltage" aria-label="Voltage graph"><canvas data-waveform="voltage" role="img" aria-label="Voltage graph over device time; gaps are not joined"></canvas></section>
-      <section class="graph-panel" data-graph-panel="current" aria-label="Current graph"><canvas data-waveform="current" role="img" aria-label="Current graph over device time; invalid samples are not zero"></canvas></section>
+      <section class="graph-panel" data-graph-panel="voltage" aria-label="Voltage graph"><output class="scale-readout" data-scale-readout="voltage" aria-live="off"></output><canvas data-waveform="voltage" role="img" aria-label="Voltage graph over device time; gaps are not joined"></canvas>${yScaleMarkup("voltage")}</section>
+      <section class="graph-panel" data-graph-panel="current" aria-label="Current graph"><output class="scale-readout" data-scale-readout="current" aria-live="off"></output><canvas data-waveform="current" role="img" aria-label="Current graph over device time; invalid samples are not zero"></canvas>${yScaleMarkup("current")}</section>
     </div>
     <p class="quality" data-live="quality"></p>
     <p class="error" data-live="error"></p>

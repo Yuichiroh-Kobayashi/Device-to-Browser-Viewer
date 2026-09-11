@@ -1,6 +1,6 @@
 # Stopped-session history and review
 
-Related to [Viewer #20](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/20).
+Related to [Viewer #20](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/20) and [Viewer #24](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/24).
 This is current product source behavior, pending external review and downstream
 intake. The Viewer shipped in stable VAMeter-Edu v2.0.0 remains source
 `e1ebdb1cde8585a37447a66f4c8183654f4c3cda`, bundle
@@ -36,7 +36,9 @@ intake. The Viewer shipped in stable VAMeter-Edu v2.0.0 remains source
   from STREAMING with accepted STREAM_END to READY. Abort, timeout, early
   stream_stopped, and disconnect do not establish readiness. Normal
   Student-owned transport close after READY retains it. Reopening or a pending
-  Start disables review; accepted new stream clears history.
+  Start temporarily disables review. A failed hello/start before acceptance retains
+  the completed epoch and restores review in CLOSED. Only an accepted new
+  epoch invalidates the previous completion; no new lifecycle flag is added.
 - **Cursor authority:** one application-lifetime presentation controller takes
   immutable history summaries and stores only an epoch and a BigInt device-time
   right edge. It never invokes runtime actions or mutates the model. A new
@@ -64,8 +66,10 @@ an iPad memory qualification. No browser storage or persistence is used.
 During streaming the graph always follows latest. Existing `makeTimeDomain`
 is retained: a 10-second display starts at 0..10 and at elapsed 12.5 seconds
 shows 2.5..12.5. The origin and X coordinates derive from device `timestamp_us`,
-never browser arrival time. Tick precision remains 0.1 s for 10-second windows
-and integer seconds for 30/60-second windows.
+never browser arrival time. The formal X windows are 1/2/5/10/30/60 seconds, with the selected preference
+retained across streams. Tick precision is 0.1 s for 1/2/5/10-second windows
+and integer seconds for 30/60-second windows. The existing major tick ladder
+is selected from plot width; it does not assume ten X divisions.
 
 After normal Stop, the initial view is latest. Native Back/Forward buttons
 move half a display window, a native range spans the retained interval, and
@@ -75,10 +79,65 @@ in a gap, which remains empty. All controls retain keyboard and touch semantics
 and a 44 px target; their layout wraps below the primary measurement workspace.
 The numeric readouts retain the final Stop value and are labelled accordingly.
 
-Changing 10/30/60 after Stop expands the view from retained records. Both modes
+Changing 1/2/5/10/30/60 after Stop expands the view from retained records. Both modes
 use the same graph policy and history. Invalid measurements stay blank/no-data,
 signed current stays signed, and the current graph's lower bound remains 0 A.
 No interpolation, smoothing, missing-row synthesis, or gap compression is added.
+
+## Stopped scales and standard graph interaction
+
+The last live GraphPolicyController frame's V/I scale indices are retained at
+normal Stop. Rendering outside STREAMING does not evaluate autoscale, including
+an already queued RAF at Stop. If no live frame was ever painted, the initialized
+ladder minima remain. Live thresholds, hysteresis and once-per-measurement/window
+evaluation are unchanged. Stopped Y selection uses the existing V and I ladders
+independently. Cursor movement, X changes and mode remount never autoscale.
+Accepted stream/TIMEBASE_RESET resets those indices and restores live policy.
+
+The sole history cursor also accepts a clamped BigInt right edge for pan.
+Each canvas has its own GraphInteractionController, bounded to two pointer
+positions and a gesture baseline, with no measurement/transport references.
+Only pointers starting on that same canvas can pair. Pointer capture is released
+on up/cancel/lost capture, remount, destroy and accepted epoch change. After a
+pinch loses one pointer, its remainder cannot pan or join a new pinch until all
+original pointers leave. A third pointer is ignored.
+
+Axis dominance uses absolute separation change divided by plot width/height.
+`PINCH_AXIS_LOCK_THRESHOLD = 0.04` waits for 4% motion; ties wait. The selected
+axis stays locked throughout the gesture even if dominance reverses. Pinch
+ratio uses separation with a floor of 10% of the corresponding plot dimension
+to handle zero/near-zero starting separation. The gesture-start scale divided
+by this ratio is quantized at geometric ladder midpoints with an 8% hysteresis
+band. Large motion may cross multiple steps; pinch-out selects smaller scale.
+These are deterministic development values, pending actual tablet usability.
+
+One-pointer horizontal drag changes the same review cursor by horizontal pixels
+/ plot width * selected device-time window (rounded to the nearest microsecond
+only for the presentation cursor). Movement clamps to retained earliest/latest.
+Y motion is ignored. Live pan and live Y pinch are inactive. Current's lower
+bound remains exactly 0 A. Vertical pan/Y origin is explicitly outside this
+implementation: [Viewer #25](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/25)
+is design HOLD, subject to [Viewer #14](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/14)
+and [VAMeter-Edu #15](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/15).
+
+Native X/Y selects and adjacent zoom buttons share GraphPolicyController state
+with pinch. Disabled controls remain mounted with native disabled semantics,
+reduced opacity and a dashed border. Live Y controls are visible and disabled.
+Native range/Back/Forward/Latest remain alternatives to drag. Scoped
+`.graph-panel canvas { touch-action: none; }` declares graph ownership before
+pointerdown; page, controls, browser zoom, OS sharing and accessibility remain
+browser/OS-owned. No proprietary gestures, global suppression or dependencies.
+
+Each graph's centered semantic output is above its canvas and does not cover
+the waveform. It has `pointer-events: none` and `aria-live="off"`. Its 秒/目盛
+comes from the very same `makeXAxisGrid()` result used to draw grid lines;
+V/目盛 or A/目盛 is the frame scale without current-unit substitution. The old
+canvas scale text was removed to avoid duplicate readouts; engineering Y tick
+labels and the current 0 A boundary remain.
+
+In this retained product model, `viewerWindowEvictionCount == 0` is normal.
+The diagnostic field remains for comparison with the harness, while bounded
+product measurement retention is governed by capacity eviction alone.
 
 ## Verification record
 
@@ -103,8 +162,12 @@ python3 tools/build-env/verify.py provenance
 git diff --check
 ```
 
-After #20 implementation: 14 product files PASS, comprising 80 named tests and
-4 script gates (84 checks using the repository's combined counting convention).
+Initial #20 implementation: 14 product files PASS, comprising 80 named tests and
+4 script gates (84 checks). Corrective #20/#24 validation adds timeout recovery,
+last-live-frame latch, manual scales, six windows, axis-lock/quantization,
+pointer cleanup, pan, control synchronization and actual grid readout tests.
+Final command counts and immutable provisional build identities are recorded
+in Draft PR #22 after the final tracked commit.
 Root harness: 30 self-tests and 13 live regressions PASS. New tests exercise
 actual accepted frames, capacity/truncation, epoch isolation, mounted review
 controls, stopped window changes, and zero construct/send/close deltas.
@@ -112,13 +175,13 @@ controls, stopped window changes, and zero construct/send/close deltas.
 Browser checks: NOT RUN. Browser plugin is absent; existing Playwright 1.50.1
 has no installed Chromium/Firefox/WebKit executable, and chromium-browser is
 an uninstalled Snap launcher. No runtime or browser dependency was installed.
-Actual rendered narrow viewport, keyboard/touch behavior, Windows Edge and
-iPad Safari remain pending. DOM mocks are host evidence only.
+Actual rendered narrow viewport, keyboard/touch behavior, Windows Edge,
+iPad Safari and Chromebook Chrome remain pending. DOM mocks are host evidence only.
 
 Build authority remains Viewer Build Environment V1. Existing Candidate A
 image matched the qualified digest and passed inventory verification. Candidate
 identities are recorded externally in the Draft PR only after the final tracked
-commit, avoiding a self-invalidating provenance commit. No Node 24 builder
+commit as PROVISIONAL DEVELOPMENT BUILD, not final Firmware intake identity, avoiding a self-invalidating provenance commit. No Node 24 builder
 changes or historical reproduction changes are included.
 
 ## Browser-side CSV (#21)

@@ -72,7 +72,7 @@ development専用機能として残ります。
 
 post-v2 の product source には、上限付き測定履歴・正常停止後の波形確認と
 browser側CSV保存を追加します
-([contract・検証範囲](docs/product/session-history-and-review.md)、Related to #20 / #21)。
+([contract・検証範囲](docs/product/session-history-and-review.md)、Related to #20 / #21 / #24)。
 この candidate の変更は、上記の安定版 bundle を更新しません。
 
 productの不足import treeは、pinned Git historyから再現できます。clean checkoutで

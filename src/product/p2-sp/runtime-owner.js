@@ -50,7 +50,8 @@ export function createRuntimeOwner({
   };
   const coordinateTimers = () => {
     const state = adapter.summary();
-    if (state.controlState === "CONNECTED" || state.controlState === "STREAMING" || state.startPending) completedHistoryEpoch = null;
+    // A failed hello/start has not accepted a replacement epoch. Readiness is
+    // temporarily gated below; only the model's next epoch invalidates Stop.
     if (state.controlState === "CONNECTED" && state.welcome === null) armTimer("hello");
     else clearTimer("hello");
     if (state.startPending) armTimer("start");

@@ -2,6 +2,32 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fixture } from "./history-fixture.mjs";
 
+for (const failure of ["start", "hello"]) test(`normal Stop survives pre-acceptance ${failure} timeout`, async () => {
+  const f = fixture();
+  try {
+    await f.start(); f.data(0n); f.data(80_000_000n); f.flush(); await f.stop();
+    f.window(10); f.position(0);
+    const epoch = f.owner.model.historyEpoch; const records = f.owner.model.recordSnapshot();
+    const cursor = f.state().rightEdge;
+    if (failure === "hello") {
+      await f.owner.actions.close();
+      const opening = f.owner.actions.open(); f.socket().open(); await opening;
+    } else await f.owner.actions.start();
+    assert.equal(f.owner.stoppedHistoryReady, false);
+    f.timeout(); f.flush();
+    assert.equal(f.owner.adapter.controlState, "CLOSED");
+    assert.equal(f.owner.stoppedHistoryReady, true);
+    assert.equal(f.owner.model.historyEpoch, epoch);
+    assert.deepEqual(f.owner.model.recordSnapshot(), records);
+    assert.equal(f.state().rightEdge, cursor);
+    const counts = { ...f.counts }; f.timeout(); assert.deepEqual(f.counts, counts, "no automatic reconnect");
+    await f.start(2);
+    assert.equal(f.owner.stoppedHistoryReady, false);
+    assert.notEqual(f.owner.model.historyEpoch, epoch);
+    f.socket().disconnect(); assert.equal(f.owner.stoppedHistoryReady, false, "new abnormal epoch cannot inherit A completion");
+  } finally { f.dispose(); }
+});
+
 test("live absolute count-up uses committed origin even before the first animation frame", async () => {
   const f = fixture();
   try {
@@ -120,6 +146,9 @@ test("truncated retained history has a visible warning in Student and Profession
       f.app.controller.setMode(mode);
       assert.match(f.root.querySelector("[data-history-status]").textContent, /古い測定値は削除/);
       f.position(0); assert.ok(Math.abs(f.state().domain.minimum - 0.04) < 1e-12);
+      f.click("latest");
+      f.pointer("current", "down", 1); f.pointer("current", "move", 1, 100000); f.pointer("current", "up", 1);
+      assert.ok(Math.abs(f.state().domain.minimum - 0.04) < 1e-12, "pan clamps to oldest retained timestamp after eviction");
     }
   } finally { f.dispose(); }
 });

@@ -1,6 +1,6 @@
 export const VOLTAGE_SCALES = Object.freeze([0.1, 0.2, 0.5, 1, 2, 5]);
 export const CURRENT_SCALES = Object.freeze([0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1]);
-export const DISPLAY_WINDOWS = Object.freeze([10, 30, 60]);
+export const DISPLAY_WINDOWS = Object.freeze([1, 2, 5, 10, 30, 60]);
 
 const valueOf = (record, channel) => channel === "voltage" ? record?.voltage_V : record?.current_A;
 const pieceOf = (record, channel) => channel === "voltage" ? record?.voltage_segment_id : record?.current_segment_id;
@@ -27,7 +27,7 @@ export function updateStagedScale(scales, scaleIndex, values) {
 }
 
 export function makeTimeDomain(originTimestampUs, latestTimestampUs, windowSeconds) {
-  if (!DISPLAY_WINDOWS.includes(windowSeconds)) throw new RangeError("window must be 10, 30, or 60 seconds");
+  if (!DISPLAY_WINDOWS.includes(windowSeconds)) throw new RangeError("unsupported display window");
   if (typeof originTimestampUs !== "bigint" || typeof latestTimestampUs !== "bigint") return Object.freeze({ minimum: 0, maximum: windowSeconds });
   const elapsed = Number(latestTimestampUs - originTimestampUs) / 1e6;
   const maximum = elapsed <= windowSeconds ? windowSeconds : elapsed;
@@ -35,11 +35,11 @@ export function makeTimeDomain(originTimestampUs, latestTimestampUs, windowSecon
 }
 
 export function timePrecision(windowSeconds) {
-  if (!DISPLAY_WINDOWS.includes(windowSeconds)) throw new RangeError("window must be 10, 30, or 60 seconds");
-  return windowSeconds === 10 ? 1 : 0;
+  if (!DISPLAY_WINDOWS.includes(windowSeconds)) throw new RangeError("unsupported display window");
+  return windowSeconds <= 10 ? 1 : 0;
 }
 
-export function makeXAxisTicks(domain, precision, plotWidthCss) {
+export function makeXAxisGrid(domain, precision, plotWidthCss) {
   if (!domain || !Number.isFinite(domain.minimum) || !Number.isFinite(domain.maximum) || domain.maximum <= domain.minimum) throw new TypeError("invalid domain");
   const capacity = Math.max(2, Math.floor(plotWidthCss / (precision ? 58 : 46)));
   const ladder = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 20, 30, 60, 120];
@@ -51,7 +51,11 @@ export function makeXAxisTicks(domain, precision, plotWidthCss) {
     const normalized = Math.abs(value) < 1e-12 ? 0 : Number(value.toFixed(10));
     ticks.push(Object.freeze({ value: normalized, label: normalized.toFixed(precision) }));
   }
-  return Object.freeze(ticks);
+  return Object.freeze({ step, ticks: Object.freeze(ticks) });
+}
+
+export function makeXAxisTicks(domain, precision, plotWidthCss) {
+  return makeXAxisGrid(domain, precision, plotWidthCss).ticks;
 }
 
 /**
@@ -59,8 +63,8 @@ export function makeXAxisTicks(domain, precision, plotWidthCss) {
  * sit exactly on the plot's right edge -- follows the same rule: the label
  * starts 12px left of its grid line. The right-hand guard only engages when
  * the label's own measured width would actually run into the reserved "s"
- * unit zone (drawn at canvasWidth - 12). The display WINDOW is always 10, 30,
- * or 60 seconds wide, but the ticks inside it are absolute elapsed device
+ * unit zone (drawn at canvasWidth - 12). The display WINDOW uses the discrete
+ * DISPLAY_WINDOWS ladder, but the ticks inside it are absolute elapsed device
  * time, not clamped to that window: once the viewport has been sliding for a
  * while, a 60s-wide window can show ticks like 940..1000, so labels are not
  * bounded to 1-2 digits. The guard is not a fixed-width guess keyed off the
@@ -184,8 +188,15 @@ export class GraphPolicyController {
     if (streamId !== null) this.streamId = streamId;
     return enteredStreaming || timebaseReset || streamChanged;
   }
-  setWindowSeconds(value) { if (!DISPLAY_WINDOWS.includes(value)) throw new RangeError("window must be 10, 30, or 60 seconds"); if (this.windowSeconds !== value) { this.windowSeconds = value; this.windowGeneration += 1; this.scaleEvaluationIdentity = { voltage: null, current: null }; } }
-  update(records, { originTimestampUs = null, rightEdgeTimestampUs = null } = {}) {
+  setWindowSeconds(value) { if (!DISPLAY_WINDOWS.includes(value)) throw new RangeError("unsupported display window"); if (this.windowSeconds !== value) { this.windowSeconds = value; this.windowGeneration += 1; this.scaleEvaluationIdentity = { voltage: null, current: null }; } }
+  setStoppedScale(channel, value, stoppedReady) {
+    const scales = channel === "voltage" ? VOLTAGE_SCALES : channel === "current" ? CURRENT_SCALES : [];
+    const index = scales.indexOf(value);
+    if (!stoppedReady || index < 0) return false;
+    this.scaleIndices[channel] = index;
+    return true;
+  }
+  update(records, { originTimestampUs = null, rightEdgeTimestampUs = null, autoscale = true } = {}) {
     const timestamped = records.filter((record) => typeof record.timestamp_us === "bigint");
     if (typeof originTimestampUs === "bigint") this.originTimestampUs = originTimestampUs;
     if (this.originTimestampUs === null && timestamped.length) this.originTimestampUs = timestamped[0].timestamp_us;
@@ -198,7 +209,7 @@ export class GraphPolicyController {
     for (const channel of ["voltage", "current"]) {
       const latestValid = active.findLast((record) => finiteValue(record, channel) !== null);
       const evaluationIdentity = `${this.epochGeneration}:${this.windowGeneration}:${rightEdgeTimestampUs ?? "live"}:${latestValid?.stream_id ?? "none"}:${latestValid?.sequence?.toString() ?? "none"}`;
-      if (evaluationIdentity !== this.scaleEvaluationIdentity[channel]) {
+      if (autoscale && evaluationIdentity !== this.scaleEvaluationIdentity[channel]) {
         const scales = channel === "voltage" ? VOLTAGE_SCALES : CURRENT_SCALES;
         const scaleUpdate = updateStagedScale(scales, this.scaleIndices[channel], active.map((record) => finiteValue(record, channel)));
         this.scaleIndices[channel] = scaleUpdate.scaleIndex;

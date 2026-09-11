@@ -71,6 +71,14 @@ header,.values,.actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items
 .graph-panel { min-width: 0; }
 .graph-panel[hidden] { display: none; }
 .graph-panel canvas { display: block; width: 100%; height: 18rem; background: var(--graph-background); }
+/* Only each graph owns direct manipulation; surrounding page/native controls
+   keep browser scrolling, zoom, keyboard and accessibility behavior. */
+.graph-panel canvas { touch-action: none; }
+.scale-readout { display: block; text-align: center; pointer-events: none; color: var(--text); font-size: .875rem; }
+.axis-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-block: .5rem; }
+.axis-controls label { min-width: 0; }
+.axis-controls select { max-width: 100%; }
+.axis-controls button:disabled,.axis-controls select:disabled { opacity: .55; cursor: not-allowed; border-style: dashed; }
 button { min-width: 44px; min-height: 44px; padding: .5rem .9rem; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
 button:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2px; box-shadow: 0 0 0 6px var(--focus-outer); }
 /* Part of the measurement header row rather than a standalone block, so it

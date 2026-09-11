@@ -21,6 +21,8 @@ class FakeNode {
     this.onclick = null;
     this.onchange = null;
     this.dataset = {};
+    this.captured = new Set();
+    this.rect = { width: 640, height: 288 };
     for (const [name, value] of Object.entries(attributes)) {
       if (name.startsWith("data-")) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
     }
@@ -30,7 +32,10 @@ class FakeNode {
   setAttribute(name, value) { this.attributes[name] = String(value); }
   getAttribute(name) { return this.attributes[name] ?? null; }
   getContext() { return this.context; }
-  getBoundingClientRect() { return { width: 640, height: 288 }; }
+  getBoundingClientRect() { return this.rect; }
+  setPointerCapture(id) { this.captured.add(id); }
+  hasPointerCapture(id) { return this.captured.has(id); }
+  releasePointerCapture(id) { this.captured.delete(id); this.onlostpointercapture?.({ pointerId: id }); }
   matches(selector) {
     const id = /^#([\w-]+)$/.exec(selector);
     if (id) return this.attributes.id === id[1];
@@ -116,6 +121,11 @@ export function fixture() {
     window(seconds) { const control = root.querySelector("[data-display-window]"); control.value = String(seconds); control.onchange(); },
     click(action) { root.querySelector(`[data-history-${action}]`).onclick(); },
     position(value) { const control = root.querySelector("[data-history-position]"); control.value = String(value); control.oninput(); },
+    scale(channel, value) { const control = root.querySelector(`[data-y-scale="${channel}"]`); control.value = String(value); control.onchange(); },
+    zoom(axis, direction) { root.querySelector(`[data-zoom-${direction}="${axis}"]`).onclick(); },
+    pointer(channel, type, id, x = 100, y = 100) {
+      root.querySelector(`[data-waveform="${channel}"]`)[`onpointer${type}`]?.({ pointerId: id, clientX: x, clientY: y, button: 0 });
+    },
     timeout() { const pending = [...jobs.values()]; jobs.clear(); pending.forEach(fn => fn()); },
     dispose() { app.destroy(); globalThis.WebSocket = original; globalThis.getComputedStyle = originalStyle; },
   };

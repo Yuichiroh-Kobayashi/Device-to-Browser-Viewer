@@ -126,6 +126,7 @@ export function createViewerApplication({
     root.querySelector("[data-history-export-reason]").textContent = csvState.reason;
     if (!csvState.enabled) root.querySelector("[data-history-export-result]").textContent = "";
     syncGraphControls(root, graphPolicy, reviewState().enabled);
+    interactions.forEach(interaction => interaction.syncOwnership());
     const diagnostic = actionDiagnostics.snapshot();
     if (BUILD_INCLUDE_PROFESSIONAL) {
       if (professionalModeAllowed(BUILD_INCLUDE_PROFESSIONAL, includeProfessional, mode)) {

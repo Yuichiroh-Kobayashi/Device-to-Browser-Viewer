@@ -36,7 +36,7 @@ intake. The Viewer shipped in stable VAMeter-Edu v2.0.0 remains source
   from STREAMING with accepted STREAM_END to READY. Abort, timeout, early
   stream_stopped, and disconnect do not establish readiness. Normal
   Student-owned transport close after READY retains it. Reopening or a pending
-  Start temporarily disables review. A failed hello/start before acceptance retains
+  Start temporarily disables review (including the source's existing connecting state before socket open). A failed hello/start before acceptance retains
   the completed epoch and restores review in CLOSED. Only an accepted new
   epoch invalidates the previous completion; no new lifecycle flag is added.
 - **Cursor authority:** one application-lifetime presentation controller takes
@@ -97,8 +97,23 @@ Accepted stream/TIMEBASE_RESET resets those indices and restores live policy.
 The sole history cursor also accepts a clamped BigInt right edge for pan.
 Each canvas has its own GraphInteractionController, bounded to two pointer
 positions and a gesture baseline, with no measurement/transport references.
+Review readiness is the sole interaction gate. Each canvas exposes
+`data-graph-interaction="browser"` outside review and `"graph"` during review.
+LIVE and non-review canvas gestures belong to the browser (`touch-action: auto`):
+one-finger page scroll, page pinch zoom and other native direct manipulation.
+The controller returns before registering pointers, taking capture or creating a
+baseline; move also checks readiness before any mutation. LIVE X changes use
+only the native dropdown and zoom buttons. LIVE Y stays zero-origin/autoscale.
+
+Only stopped review uses `touch-action: none` and the graph gestures below.
 Only pointers starting on that same canvas can pair. Pointer capture is released
-on up/cancel/lost capture, remount, destroy and accepted epoch change. After a
+on up/cancel/lost capture, remount, destroy, accepted epoch change, and immediately
+when review becomes unavailable during the next open/start attempt. The existing
+source connecting state is projected through RuntimeOwner readiness and status
+notifications; there is no new lifecycle owner/flag. A pre-acceptance failure
+restores graph ownership with the same history/cursor/scales. No in-progress
+browser gesture or previously cancelled graph gesture is adopted after recovery
+or Stop: a new pointerdown is required. After a
 pinch loses one pointer, its remainder cannot pan or join a new pinch until all
 original pointers leave. A third pointer is ignored.
 
@@ -114,19 +129,22 @@ These are deterministic development values, pending actual tablet usability.
 One-pointer horizontal drag changes the same review cursor by horizontal pixels
 / plot width * selected device-time window (rounded to the nearest microsecond
 only for the presentation cursor). Movement clamps to retained earliest/latest.
-Y motion is ignored. Live pan and live Y pinch are inactive. Current's lower
+Y motion is ignored. All LIVE canvas graph gestures, including X pinch, are inactive. Current's lower
 bound remains exactly 0 A. Vertical pan/Y origin is explicitly outside this
 implementation: [Viewer #25](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/25)
-is design HOLD, subject to [Viewer #14](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/14)
+is separate follow-on work, subject to [Viewer #14](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/14)
 and [VAMeter-Edu #15](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/15).
 
 Native X/Y selects and adjacent zoom buttons share GraphPolicyController state
 with pinch. Disabled controls remain mounted with native disabled semantics,
-reduced opacity and a dashed border. Live Y controls are visible and disabled.
-Native range/Back/Forward/Latest remain alternatives to drag. Scoped
-`.graph-panel canvas { touch-action: none; }` declares graph ownership before
-pointerdown; page, controls, browser zoom, OS sharing and accessibility remain
-browser/OS-owned. No proprietary gestures, global suppression or dependencies.
+full-opacity muted text and a dashed border. Forced-colors uses system GrayText
+for disabled controls. Live Y controls are visible and disabled.
+Native range/Back/Forward/Latest remain alternatives to drag. State-dependent
+canvas CSS declares ownership before pointerdown. Page and controls retain
+browser/OS behavior. No proprietary gestures, global suppression or dependencies.
+No extra mode-guidance DOM is added in this correction: the native controls and
+existing review status stay primary, without adding another line to narrow layouts.
+Vertical pan and Auto Y remain outside this change (#25).
 
 Each graph's centered semantic output is above its canvas and does not cover
 the waveform. It has `pointer-events: none` and `aria-live="off"`. Its 秒/目盛
@@ -172,11 +190,11 @@ Root harness: 30 self-tests and 13 live regressions PASS. New tests exercise
 actual accepted frames, capacity/truncation, epoch isolation, mounted review
 controls, stopped window changes, and zero construct/send/close deltas.
 
-Browser checks: NOT RUN. Browser plugin is absent; existing Playwright 1.50.1
-has no installed Chromium/Firefox/WebKit executable, and chromium-browser is
-an uninstalled Snap launcher. No runtime or browser dependency was installed.
-Actual rendered narrow viewport, keyboard/touch behavior, Windows Edge,
-iPad Safari and Chromebook Chrome remain pending. DOM mocks are host evidence only.
+Browser correction validation uses the existing Chromium 133 / Playwright 1.50.1
+installation, without installing a runtime or dependency. Final targeted results,
+console counts and screenshots are recorded in Draft PR #22 after the source
+commit, as DESKTOP / EMULATED BROWSER. iPad Safari physical and Chromebook touch
+physical are NOT RUN; emulation is not classroom or physical qualification.
 
 Build authority remains Viewer Build Environment V1. Existing Candidate A
 image matched the qualified digest and passed inventory verification. Candidate

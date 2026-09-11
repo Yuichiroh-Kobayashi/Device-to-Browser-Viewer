@@ -80,7 +80,12 @@ export function createRuntimeOwner({
       return accepted;
     });
     source.onBinary((buffer) => adapter.handleBinary(buffer));
-    source.onStatus(({ state, detail }) => { adapter.notifyTransportStatus({ state }); if (detail) notify(); });
+    source.onStatus(({ state, detail }) => {
+      const accepted = adapter.notifyTransportStatus({ state });
+      // The adapter has no CONNECTING state. Publish the source's existing
+      // transition so review/capture becomes unavailable before socket open.
+      if (!accepted || detail) notify();
+    });
     source.onError((error) => { adapter.abortStreaming(String(error)); notify(); });
     return source;
   }
@@ -101,7 +106,7 @@ export function createRuntimeOwner({
     adapter,
     get stoppedHistoryReady() {
       const state = adapter.summary();
-      return completedHistoryEpoch === model.historyEpoch && !state.startPending
+      return completedHistoryEpoch === model.historyEpoch && source?.state !== "connecting" && !state.startPending
         && (state.controlState === "READY" || state.controlState === "CLOSED");
     },
     actions,

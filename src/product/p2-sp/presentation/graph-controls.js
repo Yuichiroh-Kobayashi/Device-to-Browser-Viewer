@@ -1,4 +1,4 @@
-import { CURRENT_SCALES, DISPLAY_WINDOWS, VOLTAGE_SCALES } from "../graph/graph-core.js";
+import { CURRENT_SCALES, DISPLAY_WINDOWS, VOLTAGE_SCALES, formatYAxisTick } from "../graph/graph-core.js";
 
 export const channelScales = (channel) => channel === "voltage" ? VOLTAGE_SCALES : CURRENT_SCALES;
 
@@ -8,11 +8,11 @@ export function yScaleMarkup(channel) {
   return `<div class="axis-controls" aria-label="${title} scale">
     <label>${title} / 目盛
       <select data-y-scale="${channel}" aria-label="${title} per division" disabled>
-        ${channelScales(channel).map(value => `<option value="${value}">${value} ${unit}</option>`).join("")}
+        ${channelScales(channel).map(value => `<option value="${value}">${channel === "current" ? formatYAxisTick(value, channel, value) : `${value} ${unit}`}</option>`).join("")}
       </select>
     </label>
-    <button type="button" data-zoom-in="${channel}" disabled>${title} 拡大 / Zoom in</button>
-    <button type="button" data-zoom-out="${channel}" disabled>${title} 縮小 / Zoom out</button>
+    <button type="button" data-zoom-in="${channel}" aria-label="${title} scale zoom in" disabled>拡大 / Zoom in</button>
+    <button type="button" data-zoom-out="${channel}" aria-label="${title} scale zoom out" disabled>縮小 / Zoom out</button>
   </div>`;
 }
 

@@ -31,7 +31,7 @@ test("every stopped presentation input leaves full CSV bytes identical in Studen
         }
         f.pointer(channel, "down", 3, 100, 100); f.pointer(channel, "move", 3, 400, 100); exportSame(); f.pointer(channel, "up", 3);
       }
-      f.position(0); exportSame(); f.click("forward"); exportSame(); f.click("back"); exportSame(); f.click("latest"); exportSame();
+      f.position(0); exportSame(); f.position(750); exportSame(); f.position(250); exportSame(); f.position(1000); exportSame();
     }
     assert.ok(saved.length > 100);
     assert.deepEqual(f.owner.model.recordSnapshot(), records); assert.deepEqual(f.owner.model.summary(), summary);

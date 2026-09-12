@@ -75,7 +75,6 @@ header,.values,.actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items
    surrounding page/native controls keep browser scrolling and zoom. */
 .graph-panel canvas[data-graph-interaction="browser"] { touch-action: auto; }
 .graph-panel canvas[data-graph-interaction="graph"] { touch-action: none; }
-.scale-readout { display: block; text-align: center; pointer-events: none; color: var(--text); font-size: .875rem; }
 .axis-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-block: .5rem; }
 .axis-controls label { min-width: 0; }
 .axis-controls select { max-width: 100%; }
@@ -97,7 +96,6 @@ button:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2p
 .deployment[data-deployment-status="unknown"],.deployment[data-deployment-status="mismatched"] { color: var(--status-fatal); border-inline-start-color: var(--status-fatal); }
 select { min-height: 44px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
 .history-review { margin-block: 1rem; }
-.history-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .history-position { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .history-position input { flex: 1 1 12rem; min-width: 0; width: 100%; min-height: 44px; accent-color: var(--focus-inner); }
 input:focus-visible,select:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2px; box-shadow: 0 0 0 6px var(--focus-outer); }

@@ -97,7 +97,7 @@ const REQUIRED_PAIRS = Object.freeze([
   ["focus-inner", "page", NON_TEXT_MINIMUM, "focus ring against the page"],
   ["focus-outer", "focus-inner", NON_TEXT_MINIMUM, "outer focus layer against the inner ring"],
   // Canvas text: drawn by the renderer onto --graph-background.
-  ["graph-foreground", "graph-background", TEXT_MINIMUM, "graph title, scale readout and axis tick text"],
+  ["graph-foreground", "graph-background", TEXT_MINIMUM, "graph title and axis tick text"],
   ["graph-muted", "graph-background", TEXT_MINIMUM, "graph no-valid-data text"],
   ["graph-gap", "graph-background", TEXT_MINIMUM, "GAP <n> marker label text on the canvas"],
   ["graph-segment", "graph-background", TEXT_MINIMUM, "SEGMENT marker label text on the canvas"],

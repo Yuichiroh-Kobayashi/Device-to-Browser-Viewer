@@ -36,7 +36,7 @@ export function makeTimeDomain(originTimestampUs, latestTimestampUs, windowSecon
 
 export function timePrecision(windowSeconds) {
   if (!DISPLAY_WINDOWS.includes(windowSeconds)) throw new RangeError("unsupported display window");
-  return windowSeconds <= 10 ? 1 : 0;
+  return windowSeconds < 10 ? 1 : 0;
 }
 
 export function makeXAxisGrid(domain, precision, plotWidthCss) {
@@ -44,7 +44,8 @@ export function makeXAxisGrid(domain, precision, plotWidthCss) {
   const capacity = Math.max(2, Math.floor(plotWidthCss / (precision ? 58 : 46)));
   const ladder = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 20, 30, 60, 120];
   const width = domain.maximum - domain.minimum;
-  const step = ladder.find((candidate) => Math.floor(width / candidate) + 1 <= capacity) ?? ladder.at(-1);
+  const step = width === 10 ? 1 : ladder.find((candidate) => Math.floor(width / candidate) + 1 <= capacity) ?? ladder.at(-1);
+  if (width === 10) precision = 0;
   const first = Math.ceil((domain.minimum - 1e-12) / step) * step;
   const ticks = [];
   for (let value = first; value <= domain.maximum + 1e-10; value += step) {
@@ -93,7 +94,8 @@ export function formatStudentValue(value, channel) {
   if (channel !== "current") throw new TypeError("channel must be voltage or current");
   if (magnitude >= 1) return `${normalizedFixed(value, 3)} A`;
   if (magnitude >= 0.001) return `${normalizedFixed(value * 1e3, 1)} mA`;
-  return `${normalizedFixed(value * 1e6, 1)} µA`;
+  if (value === 0) return "0 A";
+  return `${normalizedFixed(value * 1e3, 4).replace(/\.?0+$/, "")} mA`;
 }
 
 function engineeringPresentation(value, channel, scale, compact) {
@@ -106,16 +108,13 @@ function engineeringPresentation(value, channel, scale, compact) {
   const magnitude = Math.abs(scale);
   if (magnitude >= 0.2) return `${normalizedFixed(value, 1)}${space}A`;
   if (magnitude >= 0.001) return `${normalizedFixed(value * 1e3, 0)}${space}mA`;
-  return `${normalizedFixed(value * 1e6, 0)}${space}µA`;
+  return `${normalizedFixed(value * 1e3, 1)}${space}mA`;
 }
 
 export function formatYAxisTick(value, channel, scale) {
   return engineeringPresentation(value, channel, scale, false);
 }
 
-export function formatScaleReadout(scale, channel) {
-  return `${engineeringPresentation(scale, channel, scale, true)}/div`;
-}
 
 // Liang-Barsky clipping. Returned endpoints retain whether clipping created them.
 export function clipLineToRectangle(a, b, rectangle) {

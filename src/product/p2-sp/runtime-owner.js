@@ -1,4 +1,4 @@
-import { StreamModel } from "../source-export/viewer/src/model/stream-model.js";
+import { SessionHistoryModel } from "./session-history-model.js";
 import { SessionAdapter } from "../source-export/viewer/src/protocol/session-adapter.js";
 import { WebSocketSource, defaultWebSocketEndpoint } from "../source-export/viewer/src/sources/websocket-source.js";
 
@@ -17,8 +17,9 @@ export function createRuntimeOwner({
   for (const [kind, value] of Object.entries(timeoutMs)) {
     if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${kind} timeout must be a positive safe integer`);
   }
-  const model = new StreamModel();
+  const model = new SessionHistoryModel();
   const adapter = new SessionAdapter(model);
+  let completedHistoryEpoch = null;
   let source = null;
   const listeners = new Set();
   const timers = new Map();
@@ -49,6 +50,8 @@ export function createRuntimeOwner({
   };
   const coordinateTimers = () => {
     const state = adapter.summary();
+    // A failed hello/start has not accepted a replacement epoch. Readiness is
+    // temporarily gated below; only the model's next epoch invalidates Stop.
     if (state.controlState === "CONNECTED" && state.welcome === null) armTimer("hello");
     else clearTimer("hello");
     if (state.startPending) armTimer("start");
@@ -65,9 +68,24 @@ export function createRuntimeOwner({
   function requestLive() {
     if (source) return source;
     source = new WebSocketSource({ endpoint, stream, supportedStreams, controlAuthority: adapter });
-    source.onControl(({ direction, text }) => adapter.handleControl(direction, text));
+    source.onControl(({ direction, text }) => {
+      const ended = adapter.controlState === "STREAMING" && adapter.decoderState?.ended === true;
+      const accepted = adapter.handleControl(direction, text);
+      // Only an accepted control can move STREAMING + STREAM_END to READY.
+      // Do not infer normal Stop from abort/timeout/transport-close callbacks.
+      if (accepted && ended && adapter.controlState === "READY") {
+        completedHistoryEpoch = model.historyEpoch;
+        notify();
+      }
+      return accepted;
+    });
     source.onBinary((buffer) => adapter.handleBinary(buffer));
-    source.onStatus(({ state, detail }) => { adapter.notifyTransportStatus({ state }); if (detail) notify(); });
+    source.onStatus(({ state, detail }) => {
+      const accepted = adapter.notifyTransportStatus({ state });
+      // The adapter has no CONNECTING state. Publish the source's existing
+      // transition so review/capture becomes unavailable before socket open.
+      if (!accepted || detail) notify();
+    });
     source.onError((error) => { adapter.abortStreaming(String(error)); notify(); });
     return source;
   }
@@ -86,6 +104,11 @@ export function createRuntimeOwner({
   return Object.freeze({
     model,
     adapter,
+    get stoppedHistoryReady() {
+      const state = adapter.summary();
+      return completedHistoryEpoch === model.historyEpoch && source?.state !== "connecting" && !state.startPending
+        && (state.controlState === "READY" || state.controlState === "CLOSED");
+    },
     actions,
     get source() { return source; },
     requestLive,

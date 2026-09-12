@@ -71,6 +71,14 @@ header,.values,.actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items
 .graph-panel { min-width: 0; }
 .graph-panel[hidden] { display: none; }
 .graph-panel canvas { display: block; width: 100%; height: 18rem; background: var(--graph-background); }
+/* Only stopped review owns canvas manipulation. LIVE/non-review and the
+   surrounding page/native controls keep browser scrolling and zoom. */
+.graph-panel canvas[data-graph-interaction="browser"] { touch-action: auto; }
+.graph-panel canvas[data-graph-interaction="graph"] { touch-action: none; }
+.axis-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-block: .5rem; }
+.axis-controls label { min-width: 0; }
+.axis-controls select { max-width: 100%; }
+.axis-controls button:disabled,.axis-controls select:disabled { opacity: 1; color: var(--text-muted); cursor: not-allowed; border-style: dashed; }
 button { min-width: 44px; min-height: 44px; padding: .5rem .9rem; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
 button:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2px; box-shadow: 0 0 0 6px var(--focus-outer); }
 /* Part of the measurement header row rather than a standalone block, so it
@@ -87,6 +95,10 @@ button:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2p
 .deployment[data-deployment-status="matched"] { color: var(--status-ready); border-inline-start-color: var(--status-ready); }
 .deployment[data-deployment-status="unknown"],.deployment[data-deployment-status="mismatched"] { color: var(--status-fatal); border-inline-start-color: var(--status-fatal); }
 select { min-height: 44px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: .375rem; }
+.history-review { margin-block: 1rem; }
+.history-position { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.history-position input { flex: 1 1 12rem; min-width: 0; width: 100%; min-height: 44px; accent-color: var(--focus-inner); }
+input:focus-visible,select:focus-visible { outline: 3px solid var(--focus-inner); outline-offset: 2px; box-shadow: 0 0 0 6px var(--focus-outer); }
 
 @media (max-width: 599px) {
   .graphs { grid-template-columns: 1fr; }
@@ -109,7 +121,9 @@ select { min-height: 44px; color: var(--text); background: var(--surface); borde
 @media (forced-colors: active) {
   .values output,.graphs section,.professional-diagnostics,button,select { border: 1px solid CanvasText; forced-color-adjust: auto; }
   .primary-action button,.primary-action button[data-action-kind] { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
+  .axis-controls button:disabled,.axis-controls select:disabled { color: GrayText; border-color: GrayText; border-style: dashed; }
   button:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; box-shadow: none; }
+  input:focus-visible,select:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; box-shadow: none; }
   .quality,.error,.deployment { color: CanvasText; border-inline-start-color: CanvasText; }
   .deployment[data-deployment-status="matched"],.deployment[data-deployment-status="unknown"],.deployment[data-deployment-status="mismatched"],.error:not(:empty) { color: CanvasText; border-inline-start-color: CanvasText; }
 }

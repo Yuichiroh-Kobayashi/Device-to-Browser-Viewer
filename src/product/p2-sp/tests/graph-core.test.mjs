@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import {
   CURRENT_SCALES, GraphPolicyController, VOLTAGE_SCALES, clipLineToRectangle,
-  constructGraphFrame, formatScaleReadout, formatStudentValue, formatYAxisTick, makeTimeDomain, makeXAxisTicks,
+  constructGraphFrame, formatStudentValue, formatYAxisTick, makeTimeDomain, makeXAxisGrid, makeXAxisTicks,
   tickLabelX, timePrecision, updateStagedScale,
 } from "../graph/graph-core.js";
 import { formatMarkerLabel } from "../graph/waveform-canvas.js";
@@ -37,13 +38,13 @@ test("device-time domain covers early, exact-window, and sliding acquisition", (
   assert.deepEqual(makeTimeDomain(1_000_000n, 5_000_000n, 10), { minimum: 0, maximum: 10 });
   assert.deepEqual(makeTimeDomain(1_000_000n, 11_000_000n, 10), { minimum: 0, maximum: 10 });
   assert.deepEqual(makeTimeDomain(1_000_000n, 13_500_000n, 10), { minimum: 2.5, maximum: 12.5 });
-  assert.equal(timePrecision(10), 1); assert.equal(timePrecision(30), 0); assert.equal(timePrecision(60), 0);
+  assert.equal(timePrecision(10), 0); assert.equal(timePrecision(30), 0); assert.equal(timePrecision(60), 0);
 });
 
 test("responsive ticks are deterministic and fit required viewport widths", () => {
   for (const width of [1366, 1024, 768]) for (const window of [10, 30, 60]) {
     const precision = timePrecision(window); const ticks = makeXAxisTicks({ minimum: 0, maximum: window }, precision, width - 98);
-    assert.ok(ticks.length >= 2); assert.ok(ticks.length <= Math.floor((width - 98) / (precision ? 58 : 46)));
+    assert.ok(ticks.length >= 2); if (window === 10) assert.equal(ticks.length, 11); else assert.ok(ticks.length <= Math.floor((width - 98) / (precision ? 58 : 46)));
     assert.ok(ticks.every((tick) => tick.label === tick.value.toFixed(precision)));
   }
 });
@@ -148,10 +149,10 @@ test("an unrealistically long tick label still clamps clear of the trailing unit
 });
 
 test("literal Student unit table boundaries, signs, negative zero, and no post-rounding reselection", () => {
-  assert.equal(formatStudentValue(0, "voltage"), "0.0 µV"); assert.equal(formatStudentValue(-0, "current"), "0.0 µA");
+  assert.equal(formatStudentValue(0, "voltage"), "0.0 µV"); assert.equal(formatStudentValue(-0, "current"), "0 A");
   assert.equal(formatStudentValue(0.000999, "voltage"), "999.0 µV"); assert.equal(formatStudentValue(0.001, "voltage"), "1.0 mV");
   assert.equal(formatStudentValue(0.99999, "voltage"), "1000.0 mV"); assert.equal(formatStudentValue(1, "voltage"), "1.00 V");
-  assert.equal(formatStudentValue(-0.000999, "current"), "-999.0 µA"); assert.equal(formatStudentValue(0.001, "current"), "1.0 mA");
+  assert.equal(formatStudentValue(-0.000999, "current"), "-0.999 mA"); assert.equal(formatStudentValue(0.001, "current"), "1.0 mA");
   assert.equal(formatStudentValue(0.99999, "current"), "1000.0 mA"); assert.equal(formatStudentValue(1, "current"), "1.000 A");
 });
 
@@ -244,10 +245,8 @@ test("invalid annotation is timestamp-only, breaks the path, and does not affect
   assert.equal(updateStagedScale(VOLTAGE_SCALES, 1, records.map((entry) => entry.voltage_V)).positivePeak, 1);
 });
 
-test("engineering Y-axis labels, staged readouts, and bounded marker causes are preserved", () => {
-  assert.equal(formatScaleReadout(0.5, "voltage"), "0.5V/div"); assert.equal(formatScaleReadout(0.01, "current"), "10mA/div"); assert.equal(formatScaleReadout(0.0001, "current"), "100µA/div");
-  assert.equal(formatYAxisTick(0, "current", 0.01), "0 A"); assert.equal(formatYAxisTick(0.09, "current", 0.01), "90 mA"); assert.equal(formatYAxisTick(0.0002, "current", 0.0001), "200 µA"); assert.equal(formatYAxisTick(1, "voltage", 0.5), "1.0 V");
-  assert.deepEqual(CURRENT_SCALES.map((scale) => formatScaleReadout(scale, "current")), ["100µA/div", "200µA/div", "500µA/div", "1mA/div", "2mA/div", "5mA/div", "10mA/div", "20mA/div", "50mA/div", "100mA/div", "0.2A/div", "0.5A/div", "1.0A/div"]);
+test("engineering Y-axis labels use A/mA only and bounded marker causes are preserved", () => {
+  assert.equal(formatYAxisTick(0, "current", 0.01), "0 A"); assert.equal(formatYAxisTick(0.09, "current", 0.01), "90 mA"); assert.equal(formatYAxisTick(0.0002, "current", 0.0001), "0.2 mA"); assert.equal(formatYAxisTick(1, "voltage", 0.5), "1.0 V");
   assert.equal(formatYAxisTick(1.8, "current", 0.2), "1.8 A"); assert.equal(formatYAxisTick(4.5, "current", 0.5), "4.5 A"); assert.equal(formatYAxisTick(9, "current", 1), "9.0 A");
   for (const [cause, text] of [["producerOverflow", "producer overflow"], ["outputQueueDrop", "output drop"], ["sourcePaused", "source paused"], ["timebaseReset", "timebase reset"]]) {
     const label = formatMarkerLabel({ kind: "sequence-gap", gap_samples: 3n, causes: { [cause]: true } }); assert.match(label, new RegExp(text)); assert.ok(label.length <= 56);
@@ -258,4 +257,46 @@ test("data quality remains independent from runtime lifecycle", () => {
   const latest = record(0, 1, 0.1); const owner = { model: { latest }, adapter: { summary: () => ({ controlState: "READY" }) } };
   assert.deepEqual(qualityFor(owner), { overall: "normal", voltage: "normal", current: "normal", gap: false }); assert.equal(runtimeValueState(owner), "停止時の値");
   owner.adapter.summary = () => ({ controlState: "STREAMING" }); assert.deepEqual(qualityFor(owner), { overall: "normal", voltage: "normal", current: "normal", gap: false }); assert.equal(runtimeValueState(owner), "");
+});
+
+
+test("10 s early and sliding grids always use every integer second at narrow/tablet/desktop widths", () => {
+  for (const pw of [142, 542, 1268]) {
+    assert.equal(timePrecision(10), 0);
+    for (const [domain, expected] of [
+      [{ minimum: 0, maximum: 10 }, [0,1,2,3,4,5,6,7,8,9,10]],
+      [{ minimum: 2.5, maximum: 12.5 }, [3,4,5,6,7,8,9,10,11,12]],
+    ]) {
+      const grid = makeXAxisGrid(domain, timePrecision(10), pw);
+      assert.equal(grid.step, 1);
+      assert.deepEqual(grid.ticks.map(t => t.value), expected);
+      assert.deepEqual(grid.ticks.map(t => t.label), expected.map(String));
+      assert.equal(new Set(grid.ticks.map(t => t.label)).size, grid.ticks.length);
+    }
+  }
+});
+
+test("other window grids and label precision match the reviewed HEAD at three widths and elapsed origins", () => {
+  // Captured before editing 3ad8fa0: full step/value/label snapshots, including sliding 2.5 and 1000 s origins.
+  const expected = {"1":"0f62a1874fe07e449ed81b573c311ccbf0f07d7f5064374d0d6397bccfe0eade","2":"42821d9f4dfe245f2fd4a8c974d4b30fd055ed8071380f370ff49efd0d58c543","5":"d78395b1bc39b762bd92b5ddfba567ce586fbb56ef23fdf36df0af1e96175bd7","30":"8f7214291fc07d1a660e3956097efd5d9d42fab57f0b1b5db6b1aef6761ab3f2","60":"bd2db696a2b0e23a15f1b7af852eda51221accd5e64512e9f3b76137412ae04d"};
+  const steps = { 1: [1, 0.2, 0.1], 2: [2, 0.5, 0.1], 5: [5, 1, 0.5], 30: [15, 5, 2], 60: [30, 10, 5] };
+  for (const w of [1,2,5,30,60]) {
+    const actual = [];
+    for (const [index, pw] of [142,542,1268].entries()) for (const origin of [0,2.5,1000]) {
+      const precision = timePrecision(w);
+      const grid = makeXAxisGrid({ minimum: origin, maximum: origin+w }, precision, pw);
+      if (origin === 0) assert.equal(grid.step, steps[w][index]);
+      actual.push({ w, pw, origin, precision, grid });
+    }
+    assert.equal(createHash("sha256").update(JSON.stringify(actual)).digest("hex"), expected[w]);
+  }
+});
+
+test("all Current presentation uses only A/mA without changing signed numeric inputs", () => {
+  for (const [value, expected] of [[0, "0 A"], [0.0001, "0.1 mA"], [0.0005, "0.5 mA"], [-0.0000001, "-0.0001 mA"], [0.02, "20.0 mA"], [-1, "-1.000 A"]]) assert.equal(formatStudentValue(value, "current"), expected);
+  for (const scale of CURRENT_SCALES) for (let i=0;i<=9;i++) {
+    const value=i*scale;
+    assert.match(formatYAxisTick(value, "current", scale), /^-?[0-9.]+ (?:mA|A)$/);
+    assert.ok(Math.abs(Number.parseFloat(formatYAxisTick(value, "current", scale)) / (formatYAxisTick(value, "current", scale).endsWith(" mA") ? 1000 : 1) - value) < 1e-12);
+  }
 });

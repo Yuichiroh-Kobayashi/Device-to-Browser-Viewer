@@ -3,10 +3,13 @@ import { createAnimationFrameQueue, createBoundedActionDiagnostics, createPresen
 import { studentMarkup, updateStudentPresentation } from "./presentation/student-view.js";
 import { professionalMarkup, updateProfessionalPresentation } from "./presentation/professional-view.js";
 import { assessDeployment, bootstrapDeviceHosted } from "./presentation/deployment-context.js";
-import { GraphPolicyController } from "./graph/graph-core.js";
+import { DISPLAY_WINDOWS, GraphPolicyController } from "./graph/graph-core.js";
 import { GraphWaveformCanvas } from "./graph/waveform-canvas.js";
 import { StudentPrimaryActionController } from "./student-primary-action-controller.js";
 import { createThemeController, createThemeMediaQuery } from "./presentation/theme-controller.js";
+import { HistoryReviewController, historyReviewMarkup, updateHistoryReview } from "./presentation/history-review.js";
+import { GraphInteractionController } from "./presentation/graph-interaction.js";
+import { channelScales, syncGraphControls } from "./presentation/graph-controls.js";
 
 const BUILD_INCLUDE_PROFESSIONAL = typeof __INCLUDE_PROFESSIONAL__ === "undefined" ? true : __INCLUDE_PROFESSIONAL__;
 
@@ -14,20 +17,19 @@ export function professionalModeAllowed(buildIncludeProfessional, runtimeRequest
   return buildIncludeProfessional === true && runtimeRequested !== false && mode === "professional";
 }
 
-const DISPLAY_WINDOW_SECONDS = Object.freeze([10, 30, 60]);
-
 export function setDisplayWindowSeconds(owner, value) {
   const seconds = Number(value);
-  if (!DISPLAY_WINDOW_SECONDS.includes(seconds)) throw new RangeError("display window must be exactly 10, 30, or 60 seconds");
+  if (!DISPLAY_WINDOWS.includes(seconds)) throw new RangeError("unsupported display window");
   owner.model.setDisplayWindowSeconds(seconds);
 }
 
 function displayWindowMarkup(seconds) {
-  return `<label class="display-window">Display window
+  return `<div class="axis-controls"><label class="display-window">横軸 / Display window
     <select data-display-window aria-label="Device-time display window">
-      ${DISPLAY_WINDOW_SECONDS.map((value) => `<option value="${value}"${value === seconds ? " selected" : ""}>${value} seconds</option>`).join("")}
+      ${DISPLAY_WINDOWS.map((value) => `<option value="${value}"${value === seconds ? " selected" : ""}>${value} 秒 / ${value === 1 ? "second" : "seconds"}</option>`).join("")}
     </select>
-  </label>`;
+  </label><button type="button" data-zoom-in="x">横軸 拡大 / Zoom in</button>
+  <button type="button" data-zoom-out="x">横軸 縮小 / Zoom out</button></div>`;
 }
 
 export function createViewerApplication({
@@ -47,25 +49,37 @@ export function createViewerApplication({
   const actionDiagnostics = createBoundedActionDiagnostics();
   const studentPrimaryAction = new StudentPrimaryActionController(owner);
   const graphPolicy = new GraphPolicyController({ windowSeconds: owner.model.displayWindowSeconds });
+  const historyReview = new HistoryReviewController();
+  const reviewState = () => historyReview.snapshot(owner.model.historySummary(), owner.stoppedHistoryReady, owner.model.displayWindowSeconds);
   // Application-lifetime presentation state. It is deliberately not reachable
   // from owner/adapter/model, and is rebuilt as "system" on every construction.
   const theme = createThemeController({ media: themeMedia, root: themeRoot });
   let controller;
   let presentation;
   let waveforms = null;
+  let interactions = [];
+  let observedHistoryEpoch = owner.model.historyEpoch;
   let lastLifecycleRecord = null;
   let destroyed = false;
   const waveformRender = createAnimationFrameQueue(animationScheduler, () => {
     if (!waveforms) return;
     const records = owner.model.recordSnapshot();
     const markers = owner.model.markerSnapshot();
-    const frames = graphPolicy.update(records);
+    const review = reviewState();
+    const frames = graphPolicy.update(records, { originTimestampUs: review.originTimestampUs,
+      rightEdgeTimestampUs: review.enabled ? review.rightEdge : null,
+      // Freeze the last live frame's scales at Stop, including pending RAFs.
+      // Reopening or a failed Start cannot overwrite those presentation values.
+      autoscale: owner.adapter.controlState === "STREAMING" });
+    syncGraphControls(root, graphPolicy, review.enabled);
     if (!waveforms.voltage.canvas.closest("[data-graph-panel]")?.hidden) waveforms.voltage.draw(frames.voltage, markers, frames.precision);
     if (!waveforms.current.canvas.closest("[data-graph-panel]")?.hidden) waveforms.current.draw(frames.current, markers, frames.precision);
   });
 
   function destroyWaveforms() {
     waveformRender.cancel();
+    interactions.forEach(interaction => interaction.destroy());
+    interactions = [];
     waveforms?.voltage.destroy();
     waveforms?.current.destroy();
     waveforms = null;
@@ -80,9 +94,33 @@ export function createViewerApplication({
       voltage: new GraphWaveformCanvas(voltageCanvas, { channel: "voltage", unit: "V", title: "Voltage", onResize }),
       current: new GraphWaveformCanvas(currentCanvas, { channel: "current", unit: "A", title: "Current", onResize }),
     });
+    interactions = ["voltage", "current"].map(channel => new GraphInteractionController(waveforms[channel].canvas, {
+      channel,
+      getState: () => ({ windowSeconds: graphPolicy.windowSeconds,
+        yScale: channelScales(channel)[graphPolicy.scaleIndices[channel]], review: reviewState() }),
+      changeWindow, changeScale,
+      panTo: timestamp => {
+        historyReview.panTo(timestamp, owner.model.historySummary(), owner.stoppedHistoryReady, graphPolicy.windowSeconds);
+        presentation.update();
+      },
+    }));
+  }
+
+  function changeWindow(value) {
+    setDisplayWindowSeconds(owner, value);
+    graphPolicy.setWindowSeconds(owner.model.displayWindowSeconds);
+    presentation.update();
+  }
+
+  function changeScale(channel, value) {
+    graphPolicy.setStoppedScale(channel, Number(value), reviewState().enabled);
+    presentation.update();
   }
 
   function update(mode) {
+    updateHistoryReview(root, owner.model.historySummary(), reviewState());
+    syncGraphControls(root, graphPolicy, reviewState().enabled);
+    interactions.forEach(interaction => interaction.syncOwnership());
     const diagnostic = actionDiagnostics.snapshot();
     if (BUILD_INCLUDE_PROFESSIONAL) {
       if (professionalModeAllowed(BUILD_INCLUDE_PROFESSIONAL, includeProfessional, mode)) {
@@ -101,7 +139,7 @@ export function createViewerApplication({
   // past the whole diagnostics list.
   function controlsMarkup(mode) {
     const toggle = BUILD_INCLUDE_PROFESSIONAL && includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : "";
-    return `${displayWindowMarkup(owner.model.displayWindowSeconds)}${toggle}`;
+    return `${displayWindowMarkup(owner.model.displayWindowSeconds)}${historyReviewMarkup()}${toggle}`;
   }
 
   function mount(mode) {
@@ -117,14 +155,34 @@ export function createViewerApplication({
     const displayWindow = root.querySelector("[data-display-window]");
     displayWindow.onchange = () => {
       try {
-        setDisplayWindowSeconds(owner, displayWindow.value);
-        graphPolicy.setWindowSeconds(owner.model.displayWindowSeconds);
-        waveformRender.request();
+        changeWindow(displayWindow.value);
       } catch {
         displayWindow.value = String(owner.model.displayWindowSeconds);
       }
     };
+    for (const axis of ["x", "voltage", "current"]) {
+      if (axis !== "x") {
+        const select = root.querySelector(`[data-y-scale="${axis}"]`);
+        select.onchange = () => changeScale(axis, select.value);
+      }
+      for (const [direction, delta] of [["in", -1], ["out", 1]]) {
+        const button = root.querySelector(`[data-zoom-${direction}="${axis}"]`);
+        button.onclick = () => {
+          if (button.disabled) return;
+          const scales = axis === "x" ? DISPLAY_WINDOWS : channelScales(axis);
+          const index = axis === "x" ? scales.indexOf(graphPolicy.windowSeconds) : graphPolicy.scaleIndices[axis];
+          if (axis === "x") changeWindow(scales[index + delta]);
+          else changeScale(axis, scales[index + delta]);
+        };
+      }
+    }
     const toggle = root.querySelector("#toggle");
+    const moveHistory = (action, position = null) => {
+      historyReview.move(action, owner.model.historySummary(), owner.stoppedHistoryReady, owner.model.displayWindowSeconds, position);
+      presentation.update();
+    };
+    const position = root.querySelector("[data-history-position]");
+    position.oninput = () => moveHistory("position", position.value);
     if (toggle) toggle.onclick = () => controller.toggle();
     const themeButton = root.querySelector("[data-theme-toggle]");
     if (themeButton) themeButton.onclick = () => theme.toggle();
@@ -157,6 +215,10 @@ export function createViewerApplication({
     const state = owner.adapter.summary(); const latest = owner.model.latest;
     const newRecord = latest !== null && latest !== lastLifecycleRecord;
     graphPolicy.observeLifecycle({ controlState: state.controlState, streamId: state.streamId, timebaseReset: newRecord && Boolean(latest.flags?.timebase_reset) });
+    if (observedHistoryEpoch !== owner.model.historyEpoch) {
+      interactions.forEach(interaction => interaction.cancel());
+      observedHistoryEpoch = owner.model.historyEpoch;
+    }
     lastLifecycleRecord = latest;
   };
   observeGraphLifecycle();
@@ -176,6 +238,7 @@ export function createViewerApplication({
     theme,
     actionDiagnostics,
     graphPolicy,
+    historyReview,
     destroy() {
       if (destroyed) return;
       destroyed = true;

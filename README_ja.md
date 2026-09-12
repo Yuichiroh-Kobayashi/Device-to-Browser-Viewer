@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+実機のAP接続確認は[ブラウザ・WebSocketの観測手順](docs/development/ap-browser-observation.md)を参照。
+
 このrepositoryには、性質の異なる2つのものが含まれています。読む・拡張する際は明確に区別してください。
 
 1. **device-hosted product Viewer source lineage**(`src/product/p2-sp/`) —

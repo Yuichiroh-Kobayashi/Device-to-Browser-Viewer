@@ -381,3 +381,5 @@ cmp LICENSES/Apache-2.0.txt \
 For device-hosted product limitations (multi-client policy, numeric
 presentation style, etc.), see
 [`docs/product/beta1-device-hosted-viewer-contract.md`](docs/product/beta1-device-hosted-viewer-contract.md).
+
+Nodeの確認済み用途とproject-local実行は [Node環境](docs/development/node-toolchain.md) を参照してください。

@@ -1,0 +1,29 @@
+name: Node HOST tests
+on:
+  pull_request:
+    paths:
+      - 'tools/build-env/**'
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/node-host-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  node-host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install project-local Node runtime
+        run: python3 tools/build-env/node.py install
+      - name: Materialize source export
+        run: python3 tools/product-repro/materialize-source-export.py
+      - name: Product and protocol HOST tests
+        run: |
+          set -euo pipefail
+          python3 tools/build-env/node.py exec -- node --test src/product/p2-sp/tests/*.test.mjs
+          python3 tools/build-env/node.py exec -- node tests/node-self-tests.mjs
+          python3 tools/build-env/node.py exec -- node tests/live-gate-regressions.mjs

@@ -6,8 +6,10 @@
 止まったかを区別する。[共通の観測・時計・保存手順][common-observation]
 と製品の操作手順を併用する。rootの開発用harnessと、`src/product/p2-sp/`の
 device-hosted Viewerは別物である。
-共通手順は[D2B PR #9](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming/pull/9)の
-未merge文書をcommit固定で参照する。運用時は承認された文書revisionを実行設定へ指定する。
+共通手順は[D2B PR #9](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming/pull/9)で
+mainへ統合された承認済み文書revision `11239494ec2ac7740b4361acc63c91f2496c3e3e` をcommit固定で参照する。
+D2B mainのmerge commitは `5bf62bed455450e0f74b143040edb32c5a2e4dcb` である。
+運用時もこの承認済み文書revisionを実行設定へ指定する。
 
 - [ ] 製品、Firmware、Viewer bundle、端末・OS・browser版を記録した。
 - [ ] 必要なページ・手順・開始／中止／保存の操作を端末へ用意した。
@@ -78,7 +80,7 @@ error frameの受信、close event、製品ownerの解放は別の確認項目�
 
 宣言した判定対象区間の終了と理由を記録し、正常停止・owner解放を期限・停止条件まで観測する。
 同じ記録単位に含める、許可済みの端末設定復元・後片付けとその記録を完了する。
-その後は[共通手順の「終了と保存」][common-finalization]に従い、新規取得の停止、
+その後は[共通手順の「Finalization and Saving」][common-finalization]に従い、新規取得の停止、
 有効な書込みhandleでのfinalization、writer・最終summaryの終了確認、inventory/checksum・照合・封印を行う。
 active fileは追尾せず、強制終了や保存失敗は不完全な記録として残す。
 封印後に端末設定を戻す設計なら、その結果を封印対象外の別記録へ保存すると事前に定める。
@@ -88,5 +90,5 @@ active fileは追尾せず、強制終了や保存失敗は不完全な記録と
 この手順書の文書確認やHOST試験は、Edge/iPadと実機の確認を完了したという意味ではない。
 HOST確認、build確認、実browser・実機未確認を分けて報告する。
 
-[common-observation]: https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming/blob/08751ca9b2201916c817096925286f1e675e0bf2/docs/qualification/practical-observation.md
-[common-finalization]: https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming/blob/08751ca9b2201916c817096925286f1e675e0bf2/docs/qualification/practical-observation.md#終了と保存
+[common-observation]: https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming/blob/11239494ec2ac7740b4361acc63c91f2496c3e3e/docs/qualification/practical-observation.md
+[common-finalization]: https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Data-Streaming/blob/11239494ec2ac7740b4361acc63c91f2496c3e3e/docs/qualification/practical-observation.md#finalization-and-saving

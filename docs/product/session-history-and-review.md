@@ -43,9 +43,9 @@ intake. The Viewer shipped in stable VAMeter-Edu v2.0.0 remains source
   immutable history summaries and stores only an epoch and a BigInt device-time
   right edge. It never invokes runtime actions or mutates the model. A new
   epoch resets to latest; Student/Professional remounts retain the same cursor.
-- **Future CSV input:** the same stopped epoch's measurement ring, all retained
+- **CSV input:** the same stopped epoch's measurement ring, all retained
   records irrespective of the visible window or display profile. CSV is the
-  follow-on #21 change, not an alternative retention authority.
+  follow-on #21 change described below, with no alternative retention authority.
 
 ## Capacity estimate
 
@@ -216,3 +216,105 @@ image matched the qualified digest and passed inventory verification. Candidate
 identities are recorded externally in the Draft PR only after the final tracked
 commit as PROVISIONAL DEVELOPMENT BUILD, not final Firmware intake identity, avoiding a self-invalidating provenance commit. No Node 24 builder
 changes or historical reproduction changes are included.
+
+## Browser-side CSV (#21)
+
+Related to [Viewer #21](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/21).
+This change is stacked on #20 and exports the same normally stopped epoch that
+the learner can review. It does not change Firmware's five-second recorder,
+device filesystem, `/download`, or the stable release bundle. Viewer CSV means
+D2B-accepted and retained measurements, not firmware-file byte identity and
+not a promise that every device-produced sample was received.
+
+The native secondary **測定データをCSV保存 / Export measurement CSV** button is available after the
+same accepted normal Stop used by review (including the subsequent owned
+transport close). Empty history and all other lifecycle states are ineligible.
+The visible viewport and Student display profile never filter export columns
+or rows. The click takes a synchronous snapshot from the sole history ring;
+there is no second measurement store, independent decoder, or network request.
+Export does not move the review cursor, mutate records, or touch transport.
+X dropdown/buttons/pinch, horizontal pan, V/I dropdown/buttons/pinch, and mode
+switching leave CSV bytes identical for the same retained epoch. A failed hello
+or start before acceptance restores the old completed epoch's export eligibility
+on CLOSED; an accepted replacement epoch cannot inherit that completion.
+
+Schema and byte representation:
+
+```csv
+elapsed_ms,voltage,current
+```
+
+- UTF-8 without BOM, CRLF after each row including the last row. Firmware
+  recorder CSV uses LF and its existing column order remains unchanged. Viewer
+  and Firmware files are not byte-identical; this update changes only Viewer
+  column order, preserving V/A/device-time measurement semantics.
+- Valid voltage/current: finite JavaScript numeric value in V/A, converted to
+  its round-trippable Number string. A signed negative current remains signed.
+  This includes the precision of the accepted D2B float32 value; it is not the
+  rounded Student display value.
+- Invalid or absent channel: an empty cell. No fabricated zero, filling,
+  interpolation, synthesized row, or cadence regularization.
+- `elapsed_ms`: BigInt `timestamp_us - epochOriginTimestampUs`, divided by
+  1000 using integer quotient/remainder. The optional fractional part has up
+  to three digits, with only trailing zeros removed. Examples: 1 us -> `0.001`,
+  1010 us -> `1.01`. The delta is never converted to Number, so sub-ms precision
+  survives even beyond Number's exact integer range. Gaps retain their actual
+  timestamp difference.
+- Static header, finite number strings, and blanks are the only cell sources.
+  String/object measurements are rejected, not coerced or quoted into CSV.
+
+**Truncation policy A:** if even one old measurement was evicted this epoch,
+the button is disabled with an explicit reason; the serializer also rejects
+the request. This version does not offer partial export. Marker annotation
+overflow alone does not remove measurements and does not block CSV. A new
+accepted epoch clears truncation and may become eligible after normal Stop.
+
+The filename is `vameter-viewer-YYYYMMDD-HHMMSS.csv` using host-local time only
+for identification. School/user/SSID/device identifiers never enter it. There
+is no browser persistent storage, cloud upload, runtime dependency, or telemetry.
+
+Download uses a local Blob URL and a temporary native download anchor invoked
+in the button's activation turn. One application retains at most one pending
+Blob URL and one cleanup timer. The URL is revoked after 60 seconds, before a
+subsequent export, on error, or when the application is destroyed. The temporary
+anchor is removed immediately after activation. The confirmation says download
+was requested; it does not assert that an OS file was successfully saved.
+Serialization failure records only `csv-serialize-failed`; browser download
+failure records only `csv-download-failed` in the existing bounded eight-entry
+action diagnostic. The UI may use the same generic error text. Raw exception
+messages, measurement text and identifiers are never copied into diagnostics.
+
+The button reads `測定データをCSV保存 / Export measurement CSV`. When enabled,
+the routine explanation is blank. Disabled reasons (normal Stop not established,
+no measurements, history truncated) and download/error results remain visible.
+The mode toggle follows CSV controls/reason/result at the bottom of the common
+control area. The exact row order is elapsed_ms, voltage, current; current CSV
+cells remain signed A regardless of the A/mA presentation choice.
+
+### #21 verification
+
+Initial #21 base: #20 commit `a3117a6ef420d2017f7b27a0343d750e86df7ad2`, tree
+`d6fee4c06259e9c85947423842ff45499f9460eb`. Before editing, materialization and
+all 14 inherited product files passed. After #21, the same commands above pass
+all 15 product files: 90 named tests + 4 script gates = 94 checks. Root harness
+remains 30 self-tests + 13 live regressions PASS. The 10 new CSV tests cover
+exact text, validity, signed current, BigInt precision, gap timing, normal-stop
+gating, shared-mode data, zero WS deltas, epoch isolation, policy A, injection
+rejection, bounded Blob cleanup and download failure recovery.
+
+The current classroom UI/schema update uses the existing Chromium installation
+for a source + synthetic transport browser download spot regression. Final
+results are recorded in PR #23. The user's prior iPad Safari / Chromebook physical
+operation report applies to the previous candidate; no new physical run or
+classroom/Firmware qualification is claimed here.
+Final committed #21 candidate identity and independent V1 two-run evidence are
+recorded in its stacked Draft PR, separately from #20's candidate.
+
+Corrective propagation uses a normal merge of #22 commit
+`9a655f48f14e8464b45ee3a8115456f02410f815` (tree
+`113f1c892090313031baef21d01dabf0c25f84b5`), merge commit
+`1ae77af7a06107a7cd9745844f6ece854ca76fd6`. Added host coverage fixes
+CSV independence from all graph interactions, hello/start timeout recovery,
+and distinct bounded diagnostic categories. Final counts and two-run V1
+identities remain in Draft PR #23 as PROVISIONAL DEVELOPMENT BUILD, pending
+independent review; they are not final Firmware intake authority.

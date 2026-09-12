@@ -8,6 +8,7 @@ import { GraphWaveformCanvas } from "./graph/waveform-canvas.js";
 import { StudentPrimaryActionController } from "./student-primary-action-controller.js";
 import { createThemeController, createThemeMediaQuery } from "./presentation/theme-controller.js";
 import { HistoryReviewController, historyReviewMarkup, updateHistoryReview } from "./presentation/history-review.js";
+import { createLocalCsvDownload, createStoppedHistoryCsv, csvExportState, historyCsvFilename } from "./history-csv.js";
 import { GraphInteractionController } from "./presentation/graph-interaction.js";
 import { channelScales, syncGraphControls } from "./presentation/graph-controls.js";
 
@@ -41,6 +42,7 @@ export function createViewerApplication({
   animationScheduler = globalThis,
   themeMedia = createThemeMediaQuery(globalThis),
   themeRoot = globalThis.document?.documentElement ?? null,
+  csvDownload = createLocalCsvDownload(),
 } = {}) {
   if (!root) throw new TypeError("viewer root is required");
   let deployment = deploymentTarget === "device-hosted"
@@ -119,6 +121,10 @@ export function createViewerApplication({
 
   function update(mode) {
     updateHistoryReview(root, owner.model.historySummary(), reviewState());
+    const csvState = csvExportState(owner.model.historySummary(), owner.stoppedHistoryReady);
+    root.querySelector("[data-history-export]").disabled = !csvState.enabled;
+    root.querySelector("[data-history-export-reason]").textContent = csvState.reason;
+    if (!csvState.enabled) root.querySelector("[data-history-export-result]").textContent = "";
     syncGraphControls(root, graphPolicy, reviewState().enabled);
     interactions.forEach(interaction => interaction.syncOwnership());
     const diagnostic = actionDiagnostics.snapshot();
@@ -139,7 +145,10 @@ export function createViewerApplication({
   // past the whole diagnostics list.
   function controlsMarkup(mode) {
     const toggle = BUILD_INCLUDE_PROFESSIONAL && includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : "";
-    return `${displayWindowMarkup(owner.model.displayWindowSeconds)}${historyReviewMarkup()}${toggle}`;
+    return `${displayWindowMarkup(owner.model.displayWindowSeconds)}${historyReviewMarkup()}
+      <button type="button" data-history-export aria-describedby="history-export-reason" disabled>測定データをCSV保存 / Export measurement CSV</button>
+      <p id="history-export-reason" class="quality" data-history-export-reason></p>
+      <p role="status" data-history-export-result></p>${toggle}`;
   }
 
   function mount(mode) {
@@ -183,6 +192,26 @@ export function createViewerApplication({
     };
     const position = root.querySelector("[data-history-position]");
     position.oninput = () => moveHistory("position", position.value);
+    root.querySelector("[data-history-export]").onclick = () => {
+      const failed = (category) => {
+        actionDiagnostics.record(category);
+        presentation.update();
+        root.querySelector("[data-history-export-result]").textContent = "CSVを保存できませんでした。 / CSV export unavailable.";
+      };
+      let csv;
+      try {
+        csv = createStoppedHistoryCsv(owner.model, owner.stoppedHistoryReady);
+      } catch {
+        failed("csv-serialize-failed");
+        return;
+      }
+      try {
+        csvDownload.save(csv, historyCsvFilename());
+        root.querySelector("[data-history-export-result]").textContent = "CSVの保存を要求しました。 / Download requested.";
+      } catch {
+        failed("csv-download-failed");
+      }
+    };
     if (toggle) toggle.onclick = () => controller.toggle();
     const themeButton = root.querySelector("[data-theme-toggle]");
     if (themeButton) themeButton.onclick = () => theme.toggle();
@@ -246,6 +275,7 @@ export function createViewerApplication({
       unsubscribeTheme();
       theme.dispose();
       studentPrimaryAction.dispose();
+      csvDownload.dispose();
       destroyWaveforms();
     },
   });

@@ -146,7 +146,7 @@ export function createViewerApplication({
   function controlsMarkup(mode) {
     const toggle = BUILD_INCLUDE_PROFESSIONAL && includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : "";
     return `${displayWindowMarkup(owner.model.displayWindowSeconds)}${historyReviewMarkup()}
-      <button type="button" data-history-export aria-describedby="history-export-reason" disabled>CSVを保存 / Export CSV</button>
+      <button type="button" data-history-export aria-describedby="history-export-reason" disabled>測定データをCSV保存 / Export measurement CSV</button>
       <p id="history-export-reason" class="quality" data-history-export-reason></p>
       <p role="status" data-history-export-result></p>${toggle}`;
   }

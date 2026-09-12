@@ -92,7 +92,18 @@ test("exact header, numeric/blank cells, signed current, real sub-ms delta and g
     f.data(origin + 9_876_543n, { sequence: 9n, flags: 4, validMask: 0 });
     await f.stop();
     const csv = createStoppedHistoryCsv(f.owner.model, f.owner.stoppedHistoryReady);
-    assert.equal(csv, "voltage,current,elapsed_ms\r\n2.5,-0.03125,0\r\n0,,1.001\r\n,0.125,1.999\r\n,,9876.543\r\n");
+    assert.equal(csv, "elapsed_ms,voltage,current\r\n0,2.5,-0.03125\r\n1.001,0,\r\n1.999,,0.125\r\n9876.543,,\r\n");
+    assert.equal(csv.charCodeAt(0) === 0xfeff, false, "no BOM");
+    assert.ok(csv.endsWith("\r\n"));
+    assert.doesNotMatch(csv.replaceAll("\r\n", ""), /[\r\n]/, "only CRLF line endings");
+    const [header, ...rows] = csv.slice(0, -2).split("\r\n").map(row => row.split(","));
+    assert.deepEqual(header, ["elapsed_ms", "voltage", "current"]);
+    assert.ok(rows.every(row => row.length === 3));
+    assert.deepEqual(rows[0], ["0", "2.5", "-0.03125"], "first row: elapsed, V, signed A");
+    assert.deepEqual(rows.map(row => row[0]), ["0", "1.001", "1.999", "9876.543"], "actual sub-ms time and gap remain in first column");
+    assert.deepEqual(rows.map(row => row[1]), ["2.5", "0", "", ""], "voltage is second, including valid zero and invalid blank");
+    assert.deepEqual(rows.map(row => row[2]), ["-0.03125", "", "0.125", ""], "current is third, signed A and invalid blank");
+    assert.equal(Number(rows[0][2]), f.owner.model.records.peek().current_A, "CSV never applies the mA presentation conversion");
     assert.equal(csv.split("\r\n").length, 6, "no fabricated missing rows");
     assert.equal(f.owner.model.records.size, 4);
     assert.equal(f.owner.model.records.peek().current_A, -0.03125);
@@ -137,7 +148,7 @@ test("mounted Student/Professional export is identical, full retained history, n
       assert.match(f.root.querySelector("[data-history-export-result]").textContent, /Download requested/);
     }
     assert.equal(saved.length, 2); assert.equal(saved[0].csv, saved[1].csv);
-    assert.equal(saved[0].csv, "voltage,current,elapsed_ms\r\n1,0.125,0\r\n1,0.125,40.001\r\n1,0.125,80000\r\n");
+    assert.equal(saved[0].csv, "elapsed_ms,voltage,current\r\n0,1,0.125\r\n40.001,1,0.125\r\n80000,1,0.125\r\n");
     assert.match(saved[0].filename, /^vameter-viewer-\d{8}-\d{6}\.csv$/);
     assert.deepEqual(f.counts, before.counts); assert.deepEqual(f.state(), before.cursor);
     for (const key of ["model", "adapter", "source"]) assert.strictEqual(f.owner[key], before[key]);
@@ -152,11 +163,11 @@ test("new stream/TIMEBASE_RESET export has one epoch and elapsed origin zero", a
   const f = fixture();
   try {
     await f.start(); f.data(99_000_000n, { voltage: 9 }); await f.stop();
-    assert.match(createStoppedHistoryCsv(f.owner.model, true), /9,0.125,0/);
+    assert.match(createStoppedHistoryCsv(f.owner.model, true), /0,9,0.125/);
     await f.owner.actions.close(); await f.start(2);
     assert.throws(() => createStoppedHistoryCsv(f.owner.model, f.owner.stoppedHistoryReady));
     f.data(900n, { flags: 0x45, voltage: 2 }); f.data(901n, { voltage: 3 }); await f.stop();
-    assert.equal(createStoppedHistoryCsv(f.owner.model, f.owner.stoppedHistoryReady), "voltage,current,elapsed_ms\r\n2,0.125,0\r\n3,0.125,0.001\r\n");
+    assert.equal(createStoppedHistoryCsv(f.owner.model, f.owner.stoppedHistoryReady), "elapsed_ms,voltage,current\r\n0,2,0.125\r\n0.001,3,0.125\r\n");
   } finally { f.dispose(); }
 });
 
@@ -187,9 +198,9 @@ test("CSV accepts only finite numbers/blank cells and never coerces hostile stri
   for (const hostile of ["=1+1", "+SUM(A1:A2)", "-1+1", "@SUM(1)", "\t=1", "1,2\r\n=3", NaN, Infinity, { toString() { throw new Error("must never coerce"); } }]) {
     assert.throws(() => createStoppedHistoryCsv(model([{ ...base, voltage_V: hostile }]), true), /finite numeric/);
     assert.throws(() => createStoppedHistoryCsv(model([{ ...base, current_A: hostile }]), true), /finite numeric/);
-    assert.equal(createStoppedHistoryCsv(model([{ ...base, voltage_V: hostile, valid_mask: 2 }]), true), "voltage,current,elapsed_ms\r\n,-0.125,0\r\n");
+    assert.equal(createStoppedHistoryCsv(model([{ ...base, voltage_V: hostile, valid_mask: 2 }]), true), "elapsed_ms,voltage,current\r\n0,,-0.125\r\n");
   }
-  assert.equal(createStoppedHistoryCsv(model([{ ...base, voltage_V: null, current_A: undefined }]), true), "voltage,current,elapsed_ms\r\n,,0\r\n");
+  assert.equal(createStoppedHistoryCsv(model([{ ...base, voltage_V: null, current_A: undefined }]), true), "elapsed_ms,voltage,current\r\n0,,\r\n");
   assert.throws(() => createStoppedHistoryCsv(model([{ ...base, timestamp_us: "=1" }]), true));
   assert.throws(() => createStoppedHistoryCsv(model([{ ...base, valid_mask: "3" }]), true));
   assert.throws(() => createStoppedHistoryCsv(model([base, { ...base, stream_id: 2 }]), true));
@@ -212,7 +223,7 @@ test("local Blob download is bounded to one URL/timer and cleans up on repeat, t
   const urls = { createObjectURL(blob) { blobs.push(blob); return `blob:${blobs.length}`; }, revokeObjectURL(url) { revoked.push(url); } };
   const scheduler = { setTimeout(fn, delay) { assert.equal(delay, 60000); timers.set(++id, fn); return id; }, clearTimeout(id) { timers.delete(id); } };
   const download = createLocalCsvDownload({ document, urls, scheduler });
-  const csv = "voltage,current,elapsed_ms\r\n1,-0.125,0.001\r\n";
+  const csv = "elapsed_ms,voltage,current\r\n0.001,1,-0.125\r\n";
   download.save(csv, "vameter-viewer-20260911-010203.csv");
   assert.equal(await blobs[0].text(), csv); assert.equal(blobs[0].type, "text/csv;charset=utf-8");
   assert.equal(anchors[0].removeCalls, 1); assert.deepEqual(revoked, []);
@@ -234,5 +245,33 @@ test("failed browser save leaves measurement review and transport unchanged", as
     f.root.querySelector("[data-history-export]").onclick();
     assert.match(f.root.querySelector("[data-history-export-result]").textContent, /CSV export unavailable/);
     assert.deepEqual(f.state(), state); assert.deepEqual(f.counts, counts);
+  } finally { f.dispose(); }
+});
+
+test("elapsed-first serialization preserves huge BigInt deltas in the actual first CSV column", () => {
+  const record = (timestamp_us, voltage_V, current_A) => ({ stream_id: 1, timestamp_us, voltage_V, current_A, valid_mask: 3 });
+  const model = { historySummary: () => ({ count: 2, truncated: false, originTimestampUs: 0n }), recordSnapshot: () => [record(0n, 2.5, -0.03125), record(0xffffffffffffffffn, 3.25, 0.125)] };
+  const csv = createStoppedHistoryCsv(model, true);
+  const rows = csv.trimEnd().split("\r\n").map(row => row.split(","));
+  assert.deepEqual(rows[0], ["elapsed_ms", "voltage", "current"]);
+  assert.deepEqual(rows[1], ["0", "2.5", "-0.03125"]);
+  assert.deepEqual(rows[2], ["18446744073709551.615", "3.25", "0.125"]);
+});
+
+test("CSV simplified label/reason and final mode placement retain disabled failure explanations", async () => {
+  const f = fixture();
+  try {
+    assert.match(f.root.innerHTML, />測定データをCSV保存 \/ Export measurement CSV<\/button>/);
+    assert.match(f.root.querySelector("[data-history-export-reason]").textContent, /正常/);
+    await f.start(); f.data(0n); await f.stop();
+    for (const mode of ["student", "professional"]) {
+      f.app.controller.setMode(mode);
+      assert.equal(f.root.querySelector("[data-history-export]").disabled, false);
+      assert.equal(f.root.querySelector("[data-history-export-reason]").textContent, "");
+      for (const earlier of ["data-history-export", "data-history-export-reason", "data-history-export-result"]) assert.ok(f.root.innerHTML.indexOf(earlier) < f.root.innerHTML.indexOf('id="toggle"'));
+    }
+    for (const [history, ready, reason] of [[{ count: 0 }, false, /正常/], [{ count: 0 }, true, /No measurements/], [{ count: 4096, truncated: true }, true, /discarded/]]) {
+      const state = csvExportState(history, ready); assert.equal(state.enabled, false); assert.match(state.reason, reason);
+    }
   } finally { f.dispose(); }
 });

@@ -226,7 +226,7 @@ device filesystem, `/download`, or the stable release bundle. Viewer CSV means
 D2B-accepted and retained measurements, not firmware-file byte identity and
 not a promise that every device-produced sample was received.
 
-The native secondary **CSVを保存 / Export CSV** button is available after the
+The native secondary **測定データをCSV保存 / Export measurement CSV** button is available after the
 same accepted normal Stop used by review (including the subsequent owned
 transport close). Empty history and all other lifecycle states are ineligible.
 The visible viewport and Student display profile never filter export columns
@@ -241,13 +241,13 @@ on CLOSED; an accepted replacement epoch cannot inherit that completion.
 Schema and byte representation:
 
 ```csv
-voltage,current,elapsed_ms
+elapsed_ms,voltage,current
 ```
 
 - UTF-8 without BOM, CRLF after each row including the last row. Firmware
-  recorder CSV uses LF. The column schema and measurement semantics align;
-  Viewer and Firmware CSV files are not byte-identical. The Firmware recorder
-  is unchanged.
+  recorder CSV uses LF and its existing column order remains unchanged. Viewer
+  and Firmware files are not byte-identical; this update changes only Viewer
+  column order, preserving V/A/device-time measurement semantics.
 - Valid voltage/current: finite JavaScript numeric value in V/A, converted to
   its round-trippable Number string. A signed negative current remains signed.
   This includes the precision of the accepted D2B float32 value; it is not the
@@ -284,6 +284,13 @@ failure records only `csv-download-failed` in the existing bounded eight-entry
 action diagnostic. The UI may use the same generic error text. Raw exception
 messages, measurement text and identifiers are never copied into diagnostics.
 
+The button reads `測定データをCSV保存 / Export measurement CSV`. When enabled,
+the routine explanation is blank. Disabled reasons (normal Stop not established,
+no measurements, history truncated) and download/error results remain visible.
+The mode toggle follows CSV controls/reason/result at the bottom of the common
+control area. The exact row order is elapsed_ms, voltage, current; current CSV
+cells remain signed A regardless of the A/mA presentation choice.
+
 ### #21 verification
 
 Initial #21 base: #20 commit `a3117a6ef420d2017f7b27a0343d750e86df7ad2`, tree
@@ -295,11 +302,11 @@ exact text, validity, signed current, BigInt precision, gap timing, normal-stop
 gating, shared-mode data, zero WS deltas, epoch isolation, policy A, injection
 rejection, bounded Blob cleanup and download failure recovery.
 
-Real-browser save behavior and rendering are NOT RUN in this environment for
-the browser-executable reason recorded above. iPad Safari's download/share
-behavior and Blob lifetime, Edge save behavior, keyboard/touch operation, and
-narrow viewport rendering remain target-browser checks. No physical validation,
-classroom validation, Firmware integration, or permission to merge is implied.
+The current classroom UI/schema update uses the existing Chromium installation
+for a source + synthetic transport browser download spot regression. Final
+results are recorded in PR #23. The user's prior iPad Safari / Chromebook physical
+operation report applies to the previous candidate; no new physical run or
+classroom/Firmware qualification is claimed here.
 Final committed #21 candidate identity and independent V1 two-run evidence are
 recorded in its stacked Draft PR, separately from #20's candidate.
 

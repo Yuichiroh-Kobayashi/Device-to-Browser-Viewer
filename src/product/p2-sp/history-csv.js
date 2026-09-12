@@ -10,7 +10,7 @@ export function csvExportState(history, ready) {
   if (!ready) return Object.freeze({ enabled: false, reason: "正常に測定を終了するとCSVを保存できます。 / Export after normal Stop." });
   if (!history.count) return Object.freeze({ enabled: false, reason: "保存する測定値がありません。 / No measurements to export." });
   if (history.truncated) return Object.freeze({ enabled: false, reason: "履歴上限で古い測定値が削除されたため、CSVは保存できません。 / Earlier measurements were discarded; complete export is unavailable." });
-  return Object.freeze({ enabled: true, reason: "この時間軸の全保持データを保存します（V・A・ms）。 / Export all retained measurements in this epoch (V, A, ms)." });
+  return Object.freeze({ enabled: true, reason: "" });
 }
 
 function numericCell(value, valid) {
@@ -25,14 +25,14 @@ export function createStoppedHistoryCsv(model, ready) {
   if (!csvExportState(history, ready).enabled) throw new Error("stopped complete history is required");
   const records = model.recordSnapshot();
   const streamId = records[0].stream_id;
-  const rows = ["voltage,current,elapsed_ms"];
+  const rows = ["elapsed_ms,voltage,current"];
   for (const record of records) {
     if (record.stream_id !== streamId || typeof history.originTimestampUs !== "bigint" || typeof record.timestamp_us !== "bigint"
       || !Number.isInteger(record.valid_mask) || record.valid_mask < 0 || record.valid_mask > 3) throw new TypeError("invalid history record");
     const voltage = numericCell(record.voltage_V, record.valid_mask & 1);
     const current = numericCell(record.current_A, record.valid_mask & 2);
     const elapsed = formatElapsedMilliseconds(record.timestamp_us - history.originTimestampUs);
-    rows.push(`${voltage},${current},${elapsed}`);
+    rows.push(`${elapsed},${voltage},${current}`);
   }
   return `${rows.join("\r\n")}\r\n`;
 }

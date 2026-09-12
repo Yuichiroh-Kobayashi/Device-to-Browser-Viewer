@@ -24,9 +24,9 @@ export function setDisplayWindowSeconds(owner, value) {
 }
 
 function displayWindowMarkup(seconds) {
-  return `<div class="axis-controls"><label class="display-window">Display window
+  return `<div class="axis-controls"><label class="display-window">横軸 / Display window
     <select data-display-window aria-label="Device-time display window">
-      ${DISPLAY_WINDOWS.map((value) => `<option value="${value}"${value === seconds ? " selected" : ""}>${value} seconds</option>`).join("")}
+      ${DISPLAY_WINDOWS.map((value) => `<option value="${value}"${value === seconds ? " selected" : ""}>${value} 秒 / ${value === 1 ? "second" : "seconds"}</option>`).join("")}
     </select>
   </label><button type="button" data-zoom-in="x">横軸 拡大 / Zoom in</button>
   <button type="button" data-zoom-out="x">横軸 縮小 / Zoom out</button></div>`;
@@ -91,8 +91,8 @@ export function createViewerApplication({
     if (!voltageCanvas || !currentCanvas) throw new Error("waveform canvas nodes are missing");
     const onResize = () => waveformRender.request();
     waveforms = Object.freeze({
-      voltage: new GraphWaveformCanvas(voltageCanvas, { channel: "voltage", unit: "V", title: "Voltage", onResize, readout: root.querySelector('[data-scale-readout="voltage"]') }),
-      current: new GraphWaveformCanvas(currentCanvas, { channel: "current", unit: "A", title: "Current", onResize, readout: root.querySelector('[data-scale-readout="current"]') }),
+      voltage: new GraphWaveformCanvas(voltageCanvas, { channel: "voltage", unit: "V", title: "Voltage", onResize }),
+      current: new GraphWaveformCanvas(currentCanvas, { channel: "current", unit: "A", title: "Current", onResize }),
     });
     interactions = ["voltage", "current"].map(channel => new GraphInteractionController(waveforms[channel].canvas, {
       channel,
@@ -139,7 +139,7 @@ export function createViewerApplication({
   // past the whole diagnostics list.
   function controlsMarkup(mode) {
     const toggle = BUILD_INCLUDE_PROFESSIONAL && includeProfessional ? `<button id="toggle">${mode === "student" ? "Professional" : "Student"}</button>` : "";
-    return `${displayWindowMarkup(owner.model.displayWindowSeconds)}${toggle}${historyReviewMarkup()}`;
+    return `${displayWindowMarkup(owner.model.displayWindowSeconds)}${historyReviewMarkup()}${toggle}`;
   }
 
   function mount(mode) {
@@ -181,7 +181,6 @@ export function createViewerApplication({
       historyReview.move(action, owner.model.historySummary(), owner.stoppedHistoryReady, owner.model.displayWindowSeconds, position);
       presentation.update();
     };
-    for (const action of ["back", "forward", "latest"]) root.querySelector(`[data-history-${action}]`).onclick = () => moveHistory(action);
     const position = root.querySelector("[data-history-position]");
     position.oninput = () => moveHistory("position", position.value);
     if (toggle) toggle.onclick = () => controller.toggle();

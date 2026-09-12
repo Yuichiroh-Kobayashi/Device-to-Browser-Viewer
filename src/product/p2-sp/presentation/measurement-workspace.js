@@ -47,8 +47,8 @@ export function measurementWorkspaceMarkup(themeLabel) {
     <div class="primary-action"><button data-student-primary-action data-action-kind="disabled" disabled>測定開始 / Start</button></div>
     <div class="values"><output data-value-panel="voltage" data-live="voltage"></output><output data-value-panel="current" data-live="current"></output></div>
     <div class="graphs" data-student-graphs>
-      <section class="graph-panel" data-graph-panel="voltage" aria-label="Voltage graph"><output class="scale-readout" data-scale-readout="voltage" aria-live="off"></output><canvas data-waveform="voltage" role="img" aria-label="Voltage graph over device time; gaps are not joined"></canvas>${yScaleMarkup("voltage")}</section>
-      <section class="graph-panel" data-graph-panel="current" aria-label="Current graph"><output class="scale-readout" data-scale-readout="current" aria-live="off"></output><canvas data-waveform="current" role="img" aria-label="Current graph over device time; invalid samples are not zero"></canvas>${yScaleMarkup("current")}</section>
+      <section class="graph-panel" data-graph-panel="voltage" aria-label="Voltage graph"><canvas data-waveform="voltage" role="img" aria-label="Voltage graph over device time; gaps are not joined"></canvas>${yScaleMarkup("voltage")}</section>
+      <section class="graph-panel" data-graph-panel="current" aria-label="Current graph"><canvas data-waveform="current" role="img" aria-label="Current graph over device time; invalid samples are not zero"></canvas>${yScaleMarkup("current")}</section>
     </div>
     <p class="quality" data-live="quality"></p>
     <p class="error" data-live="error"></p>
@@ -68,7 +68,7 @@ export function updateMeasurementWorkspace(root, owner, deployment, actionDiagno
   const qualityParts = [visibleQuality(studentAggregateQuality(quality, graphVisibility)), quality.gap ? "欠落あり" : ""].filter(Boolean);
   required(root, '[data-live="quality"]').textContent = qualityParts.join(" · ");
   const stoppedState = runtimeValueState(owner);
-  const voltageState = [visibleQuality(quality.voltage), stoppedState].filter(Boolean).join(" · "); const currentState = [visibleQuality(quality.current), stoppedState].filter(Boolean).join(" · ");
+  const voltageState = [visibleQuality(quality.voltage), Number.isFinite(latest?.voltage_V) ? stoppedState : ""].filter(Boolean).join(" · "); const currentState = [visibleQuality(quality.current), Number.isFinite(latest?.current_A) ? stoppedState : ""].filter(Boolean).join(" · ");
   required(root, '[data-live="voltage"]').textContent = `電圧 Voltage ${formatStudentValue(latest?.voltage_V, "voltage")}${voltageState ? ` (${voltageState})` : ""}`.trim();
   required(root, '[data-live="current"]').textContent = `電流 Current ${formatStudentValue(latest?.current_A, "current")}${currentState ? ` (${currentState})` : ""}`.trim();
   required(root, '[data-live="error"]').textContent = error.classification === "none" ? "" : `測定エラー: ${error.code}`;

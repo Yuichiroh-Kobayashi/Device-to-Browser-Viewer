@@ -19,7 +19,7 @@ test("Stop latches the last LIVE frame even with later unpainted records; review
       for (const seconds of DISPLAY_WINDOWS) {
         f.window(seconds); f.position(0); f.flush();
         const domainA = f.state().domain;
-        f.click("latest"); f.click("back");
+        f.position(1000); f.position(500);
         f.pointer("voltage", "down", 1); f.pointer("voltage", "move", 1, 100000); f.pointer("voltage", "up", 1);
         f.flush();
         assert.deepEqual(f.state().domain, domainA);
@@ -42,11 +42,11 @@ test("manual Y uses each existing ladder independently, persists across navigati
         assert.equal(scales[f.app.graphPolicy.scaleIndices[channel]], value);
         assert.equal(f.app.graphPolicy.scaleIndices[other], otherIndex);
         assert.equal(f.state().rightEdge, cursor);
-        assert.match(f.root.querySelector(`[data-scale-readout="${channel}"]`).textContent, new RegExp(`${value} ${channel === "voltage" ? "V" : "A"}/目盛`));
+        assert.equal(f.root.querySelector(`[data-y-scale="${channel}"]`).value, String(value));
       }
     }
     const selected = { ...f.app.graphPolicy.scaleIndices };
-    f.click("back"); f.window(30); f.app.controller.toggle(); f.flush();
+    f.position(500); f.window(30); f.app.controller.toggle(); f.flush();
     assert.deepEqual(f.app.graphPolicy.scaleIndices, selected);
     assert.deepEqual(f.owner.model.recordSnapshot(), records); assert.deepEqual(f.counts, counts);
     await f.start(2);
@@ -80,7 +80,7 @@ test("live Y controls stay mounted and disabled; all six X windows follow latest
   } finally { f.dispose(); }
 });
 
-test("all six windows use one actual major tick step for canvas and semantic readout at narrow/wide widths", async () => {
+test("all six windows retain axis grids/ticks without centered readouts at narrow/wide widths", async () => {
   const f = fixture();
   try {
     await f.start(); f.data(0n); f.data(80_000_000n); f.flush(); await f.stop(); f.scale("current", 0.02);
@@ -93,8 +93,7 @@ test("all six windows use one actual major tick step for canvas and semantic rea
       assert.deepEqual(grid.ticks, makeXAxisTicks(f.state().domain, precision, pw));
       for (let i = 1; i < grid.ticks.length; i++) assert.ok(Math.abs(grid.ticks[i].value - grid.ticks[i - 1].value - grid.step) < 1e-8);
       const readout = f.root.querySelector('[data-scale-readout="current"]');
-      assert.equal(readout.textContent, `${grid.step} 秒/目盛   0.02 A/目盛`);
-      assert.equal(readout.getAttribute("aria-live"), "off");
+      assert.equal(readout, null);
       const canvasText = f.root.querySelector('[data-waveform="current"]').context.text;
       assert.ok(grid.ticks.every(tick => canvasText.includes(tick.label)));
       assert.ok(canvasText.includes("0 A"), "current lower bound stays zero");
@@ -116,5 +115,27 @@ test("new short windows preserve gaps and invalid channels with no fabricated po
       assert.deepEqual(frame.voltage.paths.map(path => path.map(point => point.x)), [[0, 0.04], [0.2, 0.24, 0.28]]);
     }
     assert.equal(f.owner.model.records.size, 5);
+  } finally { f.dispose(); }
+});
+
+test("10 s canvas labels stay distinct and clear of the s unit at narrow/tablet/desktop widths", async () => {
+  const f = fixture();
+  try {
+    await f.start(); f.data(0n); f.data(160_000_000n); await f.stop(); f.window(10);
+    for (const width of [240, 320, 768, 1366]) for (const rightEdge of [10_000_000n, 12_500_000n, 160_000_000n]) {
+      f.app.historyReview.panTo(rightEdge, f.owner.model.historySummary(), true, 10);
+      for (const channel of ["voltage", "current"]) f.root.querySelector(`[data-waveform="${channel}"]`).rect.width = width;
+      f.app.presentation.update(); f.flush();
+      for (const channel of ["voltage", "current"]) {
+        const text = f.root.querySelector(`[data-waveform="${channel}"]`).context.textPositions;
+        const labels = text.filter(t => t.y >= 288-24 && /^\d+$/.test(t.text));
+        assert.equal(labels.length, rightEdge === 12_500_000n ? 10 : 11);
+        assert.equal(new Set(labels.map(t => t.text)).size, labels.length);
+        for (const label of labels) {
+          assert.ok(label.x >= 0 && label.x+label.width <= width-16);
+          for (const other of labels) if (other.x > label.x && other.y === label.y) assert.ok(other.x >= label.x+label.width);
+        }
+      }
+    }
   } finally { f.dispose(); }
 });

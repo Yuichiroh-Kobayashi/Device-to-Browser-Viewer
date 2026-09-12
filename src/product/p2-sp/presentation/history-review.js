@@ -20,7 +20,8 @@ export class HistoryReviewController {
     const domain = makeTimeDomain(history.originTimestampUs, rightEdge, windowSeconds);
     return Object.freeze({ enabled, earliest, latest, rightEdge, position, domain,
       canBack: enabled && rightEdge > earliest, canForward: enabled && rightEdge < latest,
-      originTimestampUs: history.originTimestampUs, precision: timePrecision(windowSeconds) });
+      // Cursor endpoints retain sub-second detail; 10 s grid ticks are integers.
+      originTimestampUs: history.originTimestampUs, precision: windowSeconds === 10 ? 1 : timePrecision(windowSeconds) });
   }
 
   move(action, history, ready, windowSeconds, position = null) {
@@ -49,16 +50,10 @@ export class HistoryReviewController {
 export function historyReviewMarkup() {
   return `<section class="history-review" aria-label="停止後の波形確認 / Stopped history">
     <p data-history-status></p>
-    <div class="history-actions">
-      <button type="button" data-history-back disabled>前へ / Back</button>
-      <button type="button" data-history-forward disabled>次へ / Forward</button>
-      <button type="button" data-history-latest disabled>最新 / Latest</button>
-    </div>
     <label class="history-position">表示する時間 / Review time
       <input type="range" min="0" max="1000" step="1" value="1000" data-history-position aria-label="表示する時間 / Review time" disabled>
     </label>
     <output data-history-window></output>
-    <p class="quality" data-history-values hidden>数値欄は停止時の値です。 / Numeric values remain at Stop.</p>
   </section>`;
 }
 
@@ -68,14 +63,10 @@ export function updateHistoryReview(root, history, state) {
     ? `履歴上限: 古い測定値は削除されています (${history.count}/${history.capacity})。 / Earlier measurements were discarded.`
     : `保持した測定値: ${history.count}/${history.capacity} / Retained measurements`;
   node("[data-history-status]").textContent = `${status}${history.markersTruncated ? " 一部の境界注記は保持されていません。 / Some boundary labels were discarded." : ""}`;
-  node("[data-history-back]").disabled = !state.canBack;
-  node("[data-history-forward]").disabled = !state.canForward;
-  node("[data-history-latest]").disabled = !state.canForward;
   const slider = node("[data-history-position]");
   slider.disabled = !state.enabled || state.earliest === state.latest;
   slider.value = String(state.position);
   const label = `${state.domain.minimum.toFixed(state.precision)}–${state.domain.maximum.toFixed(state.precision)} s`;
   slider.setAttribute("aria-valuetext", label);
-  node("[data-history-window]").textContent = state.enabled ? `停止後の表示 / Review: ${label}` : "正常に測定を終了すると履歴を確認できます。 / Review after normal Stop.";
-  node("[data-history-values]").hidden = !state.enabled;
+  node("[data-history-window]").textContent = state.enabled ? `表示中の時間 / Displayed time: ${label}` : "正常に測定を終了すると履歴を確認できます。 / Review after normal Stop.";
 }

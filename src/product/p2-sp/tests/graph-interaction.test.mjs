@@ -109,7 +109,7 @@ test("axis remains locked through dominance reversal and single-pointer remainde
   assert.equal(c.pointers.size, 0); assert.equal(surface.captured.size, 0); assert.equal(surface.onpointermove, null);
 });
 
-test("native zoom buttons traverse exactly one adjacent step, dropdown/readout synchronize, disabled endpoints remain mounted", async () => {
+test("native zoom buttons traverse exactly one adjacent step, dropdowns synchronize, disabled endpoints remain mounted", async () => {
   const f = fixture();
   try {
     await f.start(); f.data(0n); f.data(80_000_000n); f.flush(); await f.stop();
@@ -161,7 +161,7 @@ test("LIVE canvas gestures are inactive; native X controls follow latest and STO
     const current = CURRENT_SCALES[f.app.graphPolicy.scaleIndices.current];
     assert.ok(current < 0.1); assert.equal(f.app.graphPolicy.scaleIndices.voltage, voltage);
     assert.equal(f.root.querySelector('[data-y-scale="current"]').value, String(current));
-    assert.ok(f.root.querySelector('[data-scale-readout="current"]').textContent.includes(`${current} A/目盛`));
+    assert.equal(f.root.querySelector('[data-scale-readout="current"]'), null);
   } finally { f.dispose(); }
 });
 
@@ -207,14 +207,14 @@ test("different surfaces never pair pointers; remount/new epoch/destroy release 
   } finally { f.dispose(); }
 });
 
-test("standard gestures and touch-action are graph scoped; readout and native controls remain accessible", () => {
+test("standard gestures and touch-action are graph scoped; native controls remain accessible", () => {
   const source = readFileSync(new URL("../presentation/graph-interaction.js", import.meta.url), "utf8");
   const css = readFileSync(new URL("../app.css", import.meta.url), "utf8");
   assert.doesNotMatch(source, /WebSocket|SessionAdapter|decode|gesturestart|gesturechange|userAgent|document\.|preventDefault/);
   assert.match(css, /\.graph-panel canvas\[data-graph-interaction="browser"\]\s*\{ touch-action: auto; \}/);
   assert.match(css, /\.graph-panel canvas\[data-graph-interaction="graph"\]\s*\{ touch-action: none; \}/);
   assert.equal((css.match(/touch-action:/g) ?? []).length, 2);
-  assert.match(css, /\.scale-readout[^}]*text-align: center[^}]*pointer-events: none/);
+  assert.doesNotMatch(css, /scale-readout/);
   assert.match(css, /\.axis-controls[^}]*flex-wrap: wrap/);
   assert.match(css, /button:disabled[^}]*opacity: 1;[^}]*color: var\(--text-muted\)[^}]*border-style: dashed/);
 });

@@ -67,17 +67,24 @@ During streaming the graph always follows latest. Existing `makeTimeDomain`
 is retained: a 10-second display starts at 0..10 and at elapsed 12.5 seconds
 shows 2.5..12.5. The origin and X coordinates derive from device `timestamp_us`,
 never browser arrival time. The formal X windows are 1/2/5/10/30/60 seconds, with the selected preference
-retained across streams. Tick precision is 0.1 s for 1/2/5/10-second windows
-and integer seconds for 30/60-second windows. The existing major tick ladder
-is selected from plot width; it does not assume ten X divisions.
+retained across streams. Only the 10-second window uses a fixed 1-second major grid/tick step and
+integer tick labels, including sliding domains (2.5..12.5 shows 3..12).
+Only this window staggers labels into two rows when measured text would collide
+on a narrow canvas; every integer-second grid/tick remains visible.
+The 1/2/5/30/60-second windows retain the reviewed width-dependent tick ladder,
+precision and label formatting: 0.1 s for 1/2/5, integer seconds for 30/60.
+Cursor endpoint labels retain sub-second detail independently of integer grid ticks.
 
-After normal Stop, the initial view is latest. Native Back/Forward buttons
-move half a display window, a native range spans the retained interval, and
-Latest returns in one action. Range positions map to BigInt device time;
-they select a viewport, never synthesize samples. A range position can fall
-in a gap, which remains empty. All controls retain keyboard and touch semantics
-and a 44 px target; their layout wraps below the primary measurement workspace.
-The numeric readouts retain the final Stop value and are labelled accordingly.
+After normal Stop, the initial view is latest. A native range slider spans the
+retained interval; its right endpoint selects latest. It is the only dedicated
+visible review navigation control; Back/Forward/Latest buttons and their event
+bindings are removed. Horizontal graph pan continues to use the same cursor.
+Range positions map to BigInt device time, select a viewport and never synthesize
+samples. A position can fall in a gap, which remains empty. Keyboard and touch
+semantics and 44 px targets remain. The range/status label is
+`表示中の時間 / Displayed time:`. Numeric cards show only `データなし` before
+measurement; valid final values retain `停止時の値` after Stop. The separate
+stopped-value explanation paragraph is removed.
 
 Changing 1/2/5/10/30/60 after Stop expands the view from retained records. Both modes
 use the same graph policy and history. Invalid measurements stay blank/no-data,
@@ -139,19 +146,23 @@ Native X/Y selects and adjacent zoom buttons share GraphPolicyController state
 with pinch. Disabled controls remain mounted with native disabled semantics,
 full-opacity muted text and a dashed border. Forced-colors uses system GrayText
 for disabled controls. Live Y controls are visible and disabled.
-Native range/Back/Forward/Latest remain alternatives to drag. State-dependent
+The native range slider remains an alternative to drag. State-dependent
 canvas CSS declares ownership before pointerdown. Page and controls retain
 browser/OS behavior. No proprietary gestures, global suppression or dependencies.
 No extra mode-guidance DOM is added in this correction: the native controls and
 existing review status stay primary, without adding another line to narrow layouts.
 Vertical pan and Auto Y remain outside this change (#25).
 
-Each graph's centered semantic output is above its canvas and does not cover
-the waveform. It has `pointer-events: none` and `aria-live="off"`. Its 秒/目盛
-comes from the very same `makeXAxisGrid()` result used to draw grid lines;
-V/目盛 or A/目盛 is the frame scale without current-unit substitution. The old
-canvas scale text was removed to avoid duplicate readouts; engineering Y tick
-labels and the current 0 A boundary remain.
+Centered per-division outputs and renderer readout plumbing are removed from both
+graphs. Numeric axis ticks, X window dropdown and Y scale dropdown remain the
+visible scale information. The Y button text is `拡大 / Zoom in` and
+`縮小 / Zoom out`; axis-specific accessible names distinguish Voltage and Current.
+Current presentation uses only A/mA, including sub-mA numeric values, ticks and
+scale options. Measurement/model and CSV values remain signed A. Zero ticks stay
+`0 A`. X controls read `横軸 / Display window`, with bilingual second/seconds
+options; the existing `横軸 拡大 / Zoom in` and `横軸 縮小 / Zoom out` labels remain.
+The mode toggle is last in the shared control area, after review (and CSV controls
+when included). Remounts preserve the same window, scales, history and cursor.
 
 In this retained product model, `viewerWindowEvictionCount == 0` is normal.
 The diagnostic field remains for comparison with the harness, while bounded
@@ -183,7 +194,9 @@ git diff --check
 Initial #20 implementation: 14 product files PASS, comprising 80 named tests and
 4 script gates (84 checks). Corrective #20/#24 validation adds timeout recovery,
 last-live-frame latch, manual scales, six windows, axis-lock/quantization,
-pointer cleanup, pan, control synchronization and actual grid readout tests.
+pointer cleanup, pan and control synchronization tests. Classroom UI cleanup adds
+10-second exact integer grids, unchanged other-window snapshots, A/mA presentation,
+range-only controls and pre-measurement card tests.
 Final command counts and immutable provisional build identities are recorded
 in Draft PR #22 after the final tracked commit.
 Root harness: 30 self-tests and 13 live regressions PASS. New tests exercise
@@ -191,7 +204,9 @@ actual accepted frames, capacity/truncation, epoch isolation, mounted review
 controls, stopped window changes, and zero construct/send/close deltas.
 
 Browser correction validation uses the existing Chromium 133 / Playwright 1.50.1
-installation, without installing a runtime or dependency. Final targeted results,
+installation, without installing a runtime or dependency. The user reports prior iPad Safari / Chromebook touch and mouse operation checks
+completed without major-function problems at the previous candidate. That report
+is not a new physical run by this implementation task. Final targeted results,
 console counts and screenshots are recorded in Draft PR #22 after the source
 commit, as DESKTOP / EMULATED BROWSER. iPad Safari physical and Chromebook touch
 physical are NOT RUN; emulation is not classroom or physical qualification.

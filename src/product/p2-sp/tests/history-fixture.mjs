@@ -4,9 +4,10 @@ import { createViewerApplication } from "../app.js";
 import { makeStartedText, makeWelcomeText, makeViFrame, makeStreamEndFrame, makeStoppedText } from "../../source-export/viewer/src/sources/synthetic-source.js";
 
 function createContext() {
-  const context = { text: [], measureText: (text) => ({ width: String(text).length * 6 }) };
+  const context = { text: [], textPositions: [], measureText: (text) => ({ width: String(text).length * 6 }) };
   for (const name of ["setTransform", "clearRect", "fillRect", "beginPath", "moveTo", "lineTo", "stroke", "setLineDash", "save", "translate", "rotate", "restore", "clip", "rect"]) context[name] = () => {};
-  context.fillText = (text) => context.text.push(String(text));
+  context.clearRect = () => { context.textPositions = []; };
+  context.fillText = (text, x, y) => { context.text.push(String(text)); context.textPositions.push({ text: String(text), x, y, width: context.measureText(text).width }); };
   return context;
 }
 class FakeNode {
@@ -120,7 +121,6 @@ export function fixture() {
     async stop() { await owner.actions.stop(); this.end(); this.stopped(); assert.equal(owner.stoppedHistoryReady, true); },
     state() { return app.historyReview.snapshot(owner.model.historySummary(), owner.stoppedHistoryReady, owner.model.displayWindowSeconds); },
     window(seconds) { const control = root.querySelector("[data-display-window]"); control.value = String(seconds); control.onchange(); },
-    click(action) { root.querySelector(`[data-history-${action}]`).onclick(); },
     position(value) { const control = root.querySelector("[data-history-position]"); control.value = String(value); control.oninput(); },
     scale(channel, value) { const control = root.querySelector(`[data-y-scale="${channel}"]`); control.value = String(value); control.onchange(); },
     zoom(axis, direction) { root.querySelector(`[data-zoom-${direction}="${axis}"]`).onclick(); },

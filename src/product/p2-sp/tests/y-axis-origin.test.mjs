@@ -175,16 +175,22 @@ test("Y Auto zeroes the origin and fits the current visible X viewport from the 
   } finally { f.dispose(); }
 });
 
-test("viewportAutoScaleIndex is a pure function of the visible values and holds when nothing positive is visible", () => {
+test("viewportAutoScaleIndex derives from the visible values when a non-negative peak exists, and otherwise retains the current scale", () => {
   for (const scales of [VOLTAGE_SCALES, CURRENT_SCALES]) {
     const peak = scales[Math.floor(scales.length / 2)];
     const expected = viewportAutoScaleIndex(scales, 0, [peak]);
     for (let start = 0; start < scales.length; start += 1) {
-      assert.equal(viewportAutoScaleIndex(scales, start, [peak]), expected, "the result never depends on the index it started from");
+      assert.equal(viewportAutoScaleIndex(scales, start, [peak]), expected, "with a qualifying peak the result never depends on the index it started from");
     }
-    assert.equal(viewportAutoScaleIndex(scales, 2, []), 2, "an empty viewport holds the current scale");
-    assert.equal(viewportAutoScaleIndex(scales, 2, [null, -1]), 2, "so does a viewport with no positive peak");
     assert.ok(scales[expected] * 9 >= peak, "the selected scale contains the visible peak in nine divisions");
+    // No qualifying non-negative peak: the retained scale is the answer, so
+    // here the result does depend on the current index by design.
+    for (const values of [[], [null, -1], [null, null], [-0.5, -0.01]]) {
+      for (const start of [0, 2, scales.length - 1]) {
+        assert.equal(viewportAutoScaleIndex(scales, start, values), start, "nothing to fit, so the existing stopped scale is retained");
+      }
+    }
+    assert.equal(viewportAutoScaleIndex(scales, 3, [0, 0]), 0, "an exactly-zero peak still qualifies and fits the ladder minimum");
   }
 });
 
@@ -475,4 +481,190 @@ test("the Y presentation seam stays pure: no transport, protocol, DOM or proprie
   assert.match(canvas, /const yOf = \(y\) => pad\.top \+ ph - \(y - origin\) \/ \(frame\.scale \* 9\) \* ph;/);
   assert.match(canvas, /formatYAxisTick\(origin \+ i \* frame\.scale, this\.channel, frame\.scale\)/);
   assert.equal((canvas.match(/const yOf =/g) ?? []).length, 1, "there is exactly one Y transform");
+});
+
+// --- Issue #25 review finding A-01 -------------------------------------
+// Only an accepted new stream may discard the Y presentation authority of a
+// previously accepted normal-Stop session. An open attempt, CONNECTING, a
+// pending hello, a pending Start, a hello/start timeout, a transport failure
+// or a force close must leave it byte-identical -- including across the
+// renders that happen while the attempt is in flight, when review readiness
+// is temporarily false and the frame is built against a different X domain.
+
+/** Head: negative-only current. Tail: a large positive current at latest. */
+async function splitPolaritySession(f) {
+  await f.start();
+  for (const step of [0, 1, 2]) f.data(BigInt(step) * 500_000n, { voltage: 1, current: -0.01 });
+  for (const step of [6, 7, 8]) f.data(BigInt(step) * 500_000n, { voltage: 3, current: 0.5 });
+  f.flush();
+  await f.stop();
+  f.flush();
+}
+
+// CSV is itself readiness-gated, so it is compared only while review is
+// available; mid-flight it must be refused, not silently produced.
+const ySnapshot = (f) => ({
+  voltage: f.yState("voltage"),
+  current: f.yState("current"),
+  rightEdge: f.state().rightEdge,
+  window: f.owner.model.displayWindowSeconds,
+  domain: f.state().domain,
+  history: f.owner.model.historySummary(),
+});
+
+for (const failure of ["start", "hello"]) {
+  test(`A-01 negative-only AUTO_ZERO viewport survives a failed ${failure} with renders in flight`, async () => {
+    const f = fixture();
+    try {
+      await splitPolaritySession(f);
+      f.window(1); f.position(0); f.flush();
+      assert.deepEqual(f.state().domain, { minimum: 0, maximum: 1 }, "review sits on the negative-only head");
+
+      // Hold a scale that the tail viewport would not choose, then Auto. With
+      // no qualifying non-negative peak in view, Auto retains that scale.
+      f.scale("current", 0.001); f.flush();
+      f.auto("current"); f.flush();
+      assert.equal(f.yState("current").mode, "STOPPED_AUTO_ZERO");
+      assert.equal(f.yState("current").scale, 0.001, "no non-negative peak in view, so the existing scale is retained");
+
+      const before = ySnapshot(f);
+      const beforeCsv = createStoppedHistoryCsv(f.owner.model, f.owner.stoppedHistoryReady);
+      const constructed = f.counts.construct;
+      const records = f.owner.model.recordSnapshot();
+      // The attempt itself legitimately sends a control and its timeout force
+      // closes, so transport counts are compared across the renders rather
+      // than across the attempt: a repaint must generate no traffic at all.
+      const renderCounts = (label) => {
+        const counts = { ...f.counts };
+        for (let render = 0; render < 3; render += 1) { f.app.presentation.update(); f.flush(); }
+        assert.deepEqual(f.counts, counts, `renders ${label} generate no transport traffic`);
+      };
+
+      if (failure === "hello") {
+        await f.owner.actions.close();
+        const opening = f.owner.actions.open();
+        assert.equal(f.owner.stoppedHistoryReady, false, "review is unavailable while the socket is connecting");
+        renderCounts("while connecting");
+        assert.deepEqual(ySnapshot(f), before, "a render while connecting must not re-evaluate stopped Y authority");
+        f.socket().open(); await opening;
+      } else {
+        await f.owner.actions.start();
+      }
+      assert.equal(f.owner.stoppedHistoryReady, false, "review is unavailable while the attempt is pending");
+
+      // Renders in flight: review is disabled, so the frame follows latest and
+      // sees the positive tail instead of the reviewed head.
+      renderCounts("during the pending attempt");
+      assert.deepEqual(ySnapshot(f), before, "a render during the pending attempt must not re-evaluate stopped Y authority");
+      assert.throws(() => createStoppedHistoryCsv(f.owner.model, f.owner.stoppedHistoryReady), "CSV stays refused while the attempt is pending");
+
+      f.timeout(); f.flush();
+      assert.equal(f.owner.adapter.controlState, "CLOSED");
+      assert.equal(f.owner.stoppedHistoryReady, true, "the previously accepted stopped review is available again");
+      renderCounts("after recovery");
+      assert.deepEqual(ySnapshot(f), before, `a failed ${failure} leaves the stopped review authority byte-identical`);
+      assert.equal(createStoppedHistoryCsv(f.owner.model, f.owner.stoppedHistoryReady), beforeCsv, "CSV content is restored unchanged");
+      assert.deepEqual(f.owner.model.recordSnapshot(), records, "the retained measurements are untouched by the failed attempt");
+      assert.equal(f.counts.construct, failure === "hello" ? constructed + 1 : constructed, "only an explicit reopen constructs a socket");
+    } finally { f.dispose(); }
+  });
+}
+
+test("A-01 a positive AUTO_ZERO viewport is equally untouched, and Auto still re-fits after recovery", async () => {
+  const f = fixture();
+  try {
+    await f.start();
+    for (const step of [0, 1, 2]) f.data(BigInt(step) * 500_000n, { voltage: 0.05, current: 0.0005 });
+    for (const step of [6, 7, 8]) f.data(BigInt(step) * 500_000n, { voltage: 3, current: 0.5 });
+    f.flush(); await f.stop(); f.flush();
+    f.window(1); f.position(0); f.flush();
+    assert.deepEqual(f.state().domain, { minimum: 0, maximum: 1 });
+
+    f.auto("voltage"); f.auto("current"); f.flush();
+    const fitted = ySnapshot(f);
+    assert.equal(fitted.voltage.scale, 0.1, "the small head viewport fits the ladder minimum");
+    assert.equal(fitted.current.scale, 0.0001);
+
+    await f.owner.actions.start();
+    assert.equal(f.owner.stoppedHistoryReady, false);
+    for (let render = 0; render < 3; render += 1) {
+      f.app.presentation.update(); f.flush();
+      assert.deepEqual(ySnapshot(f), fitted, "the large tail viewport rendered in flight never reaches the retained state");
+    }
+    f.timeout(); f.flush();
+    assert.equal(f.owner.adapter.controlState, "CLOSED");
+    assert.deepEqual(ySnapshot(f), fitted);
+
+    // The gate suppresses re-evaluation only while review is unavailable. The
+    // reviewer's own X move must still re-fit, or Auto would be inert.
+    f.position(1000); f.flush();
+    assert.deepEqual(f.state().domain, { minimum: 3, maximum: 4 });
+    assert.equal(f.yState("voltage").mode, "STOPPED_AUTO_ZERO");
+    assert.equal(f.yState("voltage").scale, 0.5, "AUTO_ZERO still re-fits to the reviewer's new viewport");
+    assert.equal(f.yState("current").scale, 0.1);
+    assert.equal(f.yState("voltage").origin, 0);
+  } finally { f.dispose(); }
+});
+
+test("A-01 an accepted new stream is the one thing that does discard the previous stopped Y authority", async () => {
+  const f = fixture();
+  try {
+    await splitPolaritySession(f);
+    f.window(1); f.position(0); f.flush();
+    f.scale("current", 0.001); f.auto("current"); dragY(f, "voltage", 70); f.flush();
+    const epoch = f.owner.model.historyEpoch;
+    assert.equal(f.yState("current").mode, "STOPPED_AUTO_ZERO");
+    assert.equal(f.yState("voltage").mode, "STOPPED_MANUAL_FREE");
+    assert.notEqual(f.yState("voltage").origin, 0);
+
+    f.pointer("voltage", "down", 9);
+    assert.equal(f.gesture("voltage").pointers, 1);
+
+    await f.start(2); f.flush();
+    for (const channel of ["voltage", "current"]) {
+      assert.equal(f.yState(channel).mode, "LIVE_AUTO_ZERO", `${channel} returns to LIVE`);
+      assert.equal(f.yState(channel).origin, 0);
+    }
+    assert.notEqual(f.owner.model.historyEpoch, epoch, "a new epoch was accepted");
+    assert.equal(f.app.historyReview.rightEdgeTimestampUs, null, "the review cursor resets to latest");
+    assert.deepEqual(f.gesture("voltage"), { pointers: 0, mode: null, axis: null, baseline: null, captured: 0 });
+  } finally { f.dispose(); }
+});
+
+test("losing one pointer of a pinch never leaves a usable gesture, by cancel or by lost capture", async () => {
+  const f = fixture();
+  try {
+    await stopped(f);
+    for (const [name, drop] of [["pointercancel", (id) => f.pointer("voltage", "cancel", id)], ["lostpointercapture", (id) => f.lostCapture("voltage", id)]]) {
+      f.auto("voltage"); f.flush();
+      f.pointer("voltage", "down", 1, 100, 100);
+      f.pointer("voltage", "down", 2, 150, 140);
+      f.pointer("voltage", "move", 2, 150, 240); f.flush();
+      assert.equal(f.gesture("voltage").mode, "pinch");
+      const afterPinch = f.yState("voltage");
+
+      drop(2);
+      assert.equal(f.gesture("voltage").pointers, 1, `${name} on one pointer leaves the other registered`);
+      assert.equal(f.gesture("voltage").mode, "pinch", `${name} does not demote the gesture to a pan`);
+      f.pointer("voltage", "move", 1, 100, 400); f.flush();
+      assert.deepEqual(f.yState("voltage"), afterPinch, `the remainder after ${name} cannot pan`);
+      f.pointer("voltage", "move", 1, 600, 100); f.flush();
+      assert.deepEqual(f.yState("voltage"), afterPinch);
+
+      drop(1);
+      assert.deepEqual(f.gesture("voltage"), { pointers: 0, mode: null, axis: null, baseline: null, captured: 0 },
+        `${name} on the last pointer clears mode, axis, baseline and capture`);
+      f.pointer("voltage", "move", 1, 600, 400); f.flush();
+      assert.deepEqual(f.yState("voltage"), afterPinch, "a move after the gesture ended is not adopted");
+    }
+
+    // A remount abandons any in-flight gesture; the new canvas requires a new
+    // pointerdown rather than resuming the old stream.
+    f.pointer("current", "down", 5, 100, 100);
+    const beforeRemount = f.yState("current");
+    f.app.controller.toggle(); f.flush();
+    assert.deepEqual(f.gesture("current"), { pointers: 0, mode: null, axis: null, baseline: null, captured: 0 });
+    f.pointer("current", "move", 5, 100, 400); f.flush();
+    assert.deepEqual(f.yState("current"), beforeRemount, "the abandoned gesture does not revive against the new canvas");
+  } finally { f.dispose(); }
 });

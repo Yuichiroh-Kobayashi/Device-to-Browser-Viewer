@@ -132,6 +132,12 @@ export function fixture({ csvDownload } = {}) {
     scale(channel, value) { const control = root.querySelector(`[data-y-scale="${channel}"]`); control.value = String(value); control.onchange(); },
     zoom(axis, direction) { root.querySelector(`[data-zoom-${direction}="${axis}"]`).onclick(); },
     auto(channel) { root.querySelector(`[data-y-auto="${channel}"]`).onclick(); },
+    lostCapture(channel, id) { root.querySelector(`[data-waveform="${channel}"]`).onlostpointercapture?.({ pointerId: id }); },
+    gesture(channel) {
+      const controller = app.interactionState(channel);
+      return { pointers: controller.pointers.size, mode: controller.mode, axis: controller.axis, baseline: controller.baseline,
+        captured: root.querySelector(`[data-waveform="${channel}"]`).captured.size };
+    },
     yState(channel) { return app.graphPolicy.yPresentation(channel); },
     waveform(channel) {
       return root.querySelector(`[data-waveform="${channel}"]`).context.strokes.filter(stroke => stroke.lineWidth === 1.7).flatMap(stroke => stroke.points);

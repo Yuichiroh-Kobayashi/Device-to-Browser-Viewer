@@ -186,9 +186,32 @@ for a channel -- vertical pan, Y pinch, Y scale dropdown, Y zoom in, Y zoom out
 -- enters `STOPPED_MANUAL_FREE` for that channel alone. That channel's Y Auto
 control enters `STOPPED_AUTO_ZERO`. An accepted new stream returns both
 channels to `LIVE_AUTO_ZERO` with origin 0, through the existing epoch reset.
-A failed next Start never reaches STREAMING and therefore never resets: the
-previously accepted stopped review keeps its cursor, scales and Y state.
 Voltage and Current states are independent throughout.
+
+**Only an accepted new stream may discard the Y presentation authority of a
+previously accepted normal-Stop session.** An open attempt, the source's
+connecting state, a pending hello, a pending Start, a hello or start timeout,
+a transport failure and a force close must all leave the review cursor, the X
+window, and both channels' Y mode, origin and scale exactly as they were, and
+leave retained history and CSV content unchanged. Controls may be disabled
+while such an attempt is in flight; the authority behind them may not be
+recomputed.
+
+This is enforced at the one place that advances the Y state machine.
+`GraphPolicyController.update()` takes the caller's accepted-stopped-review
+readiness -- the same fact that gates `setStoppedScale`, `setStoppedOrigin`
+and `autoStoppedY`, and the same fact that decides whether a review right
+edge is supplied at all -- and advances neither the latch transition nor an
+`STOPPED_AUTO_ZERO` re-fit without it. The gate matters because a frame
+rendered while review is unavailable follows latest instead of the reviewer's
+cursor: re-evaluating there would rewrite the previous session's scale
+against a viewport the reviewer never chose. With a Current channel whose
+reviewed viewport holds only negative samples, that rewrite would also be
+permanent, because the retain rule below then has no peak with which to
+correct it. Outside STREAMING the scale is frozen for every mode anyway, so a
+render during an unaccepted attempt simply repaints retained values. The
+parameter defaults to withholding the transition, so a caller that omits it
+can never mutate the state.
 
 Y origin is presentation state in channel units. It is applied only to the
 rendered viewport `[origin, origin + 9 * scale]`. It does not reach measurement
@@ -224,14 +247,30 @@ Y Auto is one native button per channel, `自動 / Auto`, beside that channel's
 existing scale controls. One activation clears the manual origin, returns the
 origin to exactly 0, selects a scale from the records visible in the current X
 viewport, and enters `STOPPED_AUTO_ZERO`. The selection is not a new autoscale
-algorithm: it is the existing `updateStagedScale` ladder authority evaluated
-from the ladder minimum, which makes the result a pure function of the visible
-values rather than of the index the viewer happened to arrive from. A viewport
-with no positive peak holds the current scale instead of collapsing to the
-ladder minimum. In `STOPPED_AUTO_ZERO` an X cursor or window change may
-deterministically re-fit that channel's scale; the next manual Y operation
-returns the channel to `STOPPED_MANUAL_FREE`, after which X review changes
-alter neither origin nor scale.
+algorithm: it is the existing positive-domain `updateStagedScale` ladder
+authority, evaluated from the ladder minimum.
+
+The scale claim is therefore conditional, and is stated that way deliberately:
+
+- When a qualifying non-negative peak exists in the visible viewport, the
+  selected index is derived from those values alone and does not depend on the
+  index the viewer arrived from. Evaluating from the ladder minimum is what
+  buys that: iterating the staged rule from the current index is not
+  confluent, so the same records would otherwise settle on different indices
+  depending on the path taken.
+- When no qualifying non-negative peak exists -- an empty viewport, or a
+  Current viewport holding only negative samples -- there is nothing to fit,
+  and the existing stopped scale is retained rather than collapsed to the
+  ladder minimum. In that case the result follows the retained scale, not the
+  viewport.
+
+No autoscale over negative magnitudes is introduced, and the existing
+positive-domain staged scale authority is unchanged.
+
+In `STOPPED_AUTO_ZERO` an X cursor or window change made by the reviewer
+re-fits that channel's scale under the same two rules; the next manual Y
+operation returns the channel to `STOPPED_MANUAL_FREE`, after which X review
+changes alter neither origin nor scale.
 
 Auto stays mounted in LIVE and is disabled there, because LIVE already is the
 zero-origin autoscale state; `aria-pressed` carries that fact natively and

@@ -40,14 +40,21 @@ export const Y_PRESENTATION_STATES = Object.freeze(["LIVE_AUTO_ZERO", "STOPPED_L
 
 /**
  * Stopped Y Auto scale for one channel. This is not a second autoscale
- * algorithm: it is the existing updateStagedScale ladder authority evaluated
- * from the ladder minimum, which makes the result a pure function of the
- * values visible in the current X viewport rather than of how the viewer
- * arrived at the present index. Iterating the staged rule from the current
- * index instead would settle on different indices for the same records, so
- * "Auto" would not be reproducible. An empty or wholly negative viewport has
- * no positive peak to fit and holds the current index rather than collapsing
- * to the ladder minimum.
+ * algorithm: it is the existing positive-domain updateStagedScale ladder
+ * authority, evaluated from the ladder minimum.
+ *
+ * When a qualifying non-negative peak exists in the visible viewport, the
+ * index is derived from those values alone and does not depend on the index
+ * the viewer arrived from. That is why it is evaluated from the minimum:
+ * iterating the staged rule from the current index is not confluent, so the
+ * same records would settle on different indices depending on the path taken
+ * and "Auto" would not be reproducible.
+ *
+ * When no qualifying non-negative peak exists -- an empty viewport, or one
+ * holding only negative current -- there is nothing to fit, and the existing
+ * stopped scale is retained rather than collapsed to the ladder minimum. In
+ * that case the result follows the retained scale, not the viewport. No
+ * autoscale over negative magnitudes is introduced.
  */
 export function viewportAutoScaleIndex(scales, currentIndex, values) {
   const evaluation = updateStagedScale(scales, 0, values);
@@ -256,7 +263,19 @@ export class GraphPolicyController {
     state.mode = "STOPPED_AUTO_ZERO";
     return true;
   }
-  update(records, { originTimestampUs = null, rightEdgeTimestampUs = null, autoscale = true } = {}) {
+  /**
+   * stoppedReview is the caller's accepted-stopped-review readiness, the same
+   * fact that gates setStoppedScale/setStoppedOrigin/autoStoppedY and that
+   * decides whether rightEdgeTimestampUs is supplied at all. Only a frame
+   * built against that accepted review viewport may feed the retained Y
+   * authority. While an unaccepted attempt is in flight -- open, CONNECTING,
+   * pending hello or Start, a timeout, a transport failure, a force close --
+   * readiness is temporarily false and the frame follows latest instead of
+   * the reviewer's cursor, so re-evaluating here would silently rewrite the
+   * previous session's Y state against a viewport the reviewer never chose.
+   * It defaults to false so a caller that omits it can never mutate.
+   */
+  update(records, { originTimestampUs = null, rightEdgeTimestampUs = null, autoscale = true, stoppedReview = false } = {}) {
     const timestamped = records.filter((record) => typeof record.timestamp_us === "bigint");
     if (typeof originTimestampUs === "bigint") this.originTimestampUs = originTimestampUs;
     if (this.originTimestampUs === null && timestamped.length) this.originTimestampUs = timestamped[0].timestamp_us;
@@ -281,9 +300,13 @@ export class GraphPolicyController {
         }
         continue;
       }
-      // Leaving STREAMING latches the last live frame: same zero origin, same
-      // scale, and no autoscale on any review path. Only STOPPED_AUTO_ZERO
-      // re-derives a scale, and only from what the X viewport currently shows.
+      // Outside STREAMING the scale is already frozen for every mode, so a
+      // frame rendered while review is unavailable simply repaints retained
+      // values. Only an accepted stopped review may move the state machine.
+      if (!stoppedReview) continue;
+      // Reaching accepted review from LIVE latches the last live frame: same
+      // zero origin, same scale. Only STOPPED_AUTO_ZERO re-derives a scale,
+      // and only from what the reviewer's own X viewport currently shows.
       if (state.mode === "LIVE_AUTO_ZERO") { state.mode = "STOPPED_LATCHED_ZERO"; state.origin = 0; }
       if (state.mode === "STOPPED_AUTO_ZERO") this.scaleIndices[channel] = viewportAutoScaleIndex(scales, this.scaleIndices[channel], active.map((record) => finiteValue(record, channel)));
     }

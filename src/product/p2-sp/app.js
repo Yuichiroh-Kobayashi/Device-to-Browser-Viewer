@@ -72,7 +72,10 @@ export function createViewerApplication({
       rightEdgeTimestampUs: review.enabled ? review.rightEdge : null,
       // Freeze the last live frame's scales at Stop, including pending RAFs.
       // Reopening or a failed Start cannot overwrite those presentation values.
-      autoscale: owner.adapter.controlState === "STREAMING" });
+      autoscale: owner.adapter.controlState === "STREAMING",
+      // Same readiness fact that supplied rightEdge above, so the Y state
+      // machine only ever advances against the viewport actually rendered.
+      stoppedReview: review.enabled });
     syncGraphControls(root, graphPolicy, review.enabled);
     if (!waveforms.voltage.canvas.closest("[data-graph-panel]")?.hidden) waveforms.voltage.draw(frames.voltage, markers, frames.precision);
     if (!waveforms.current.canvas.closest("[data-graph-panel]")?.hidden) waveforms.current.draw(frames.current, markers, frames.precision);
@@ -287,6 +290,9 @@ export function createViewerApplication({
     actionDiagnostics,
     graphPolicy,
     historyReview,
+    // Read-only gesture inspection for host tests. It exposes the existing
+    // per-canvas controller; it is not a second gesture owner or a mutator.
+    interactionState(channel) { return interactions.find(interaction => interaction.channel === channel) ?? null; },
     destroy() {
       if (destroyed) return;
       destroyed = true;

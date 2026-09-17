@@ -72,7 +72,10 @@ export function createViewerApplication({
       rightEdgeTimestampUs: review.enabled ? review.rightEdge : null,
       // Freeze the last live frame's scales at Stop, including pending RAFs.
       // Reopening or a failed Start cannot overwrite those presentation values.
-      autoscale: owner.adapter.controlState === "STREAMING" });
+      autoscale: owner.adapter.controlState === "STREAMING",
+      // Same readiness fact that supplied rightEdge above, so the Y state
+      // machine only ever advances against the viewport actually rendered.
+      stoppedReview: review.enabled });
     syncGraphControls(root, graphPolicy, review.enabled);
     if (!waveforms.voltage.canvas.closest("[data-graph-panel]")?.hidden) waveforms.voltage.draw(frames.voltage, markers, frames.precision);
     if (!waveforms.current.canvas.closest("[data-graph-panel]")?.hidden) waveforms.current.draw(frames.current, markers, frames.precision);
@@ -98,9 +101,11 @@ export function createViewerApplication({
     });
     interactions = ["voltage", "current"].map(channel => new GraphInteractionController(waveforms[channel].canvas, {
       channel,
-      getState: () => ({ windowSeconds: graphPolicy.windowSeconds,
-        yScale: channelScales(channel)[graphPolicy.scaleIndices[channel]], review: reviewState() }),
-      changeWindow, changeScale,
+      getState: () => {
+        const y = graphPolicy.yPresentation(channel);
+        return { windowSeconds: graphPolicy.windowSeconds, yScale: y.scale, yOrigin: y.origin, review: reviewState() };
+      },
+      changeWindow, changeScale, panYOrigin,
       panTo: timestamp => {
         historyReview.panTo(timestamp, owner.model.historySummary(), owner.stoppedHistoryReady, graphPolicy.windowSeconds);
         presentation.update();
@@ -116,6 +121,19 @@ export function createViewerApplication({
 
   function changeScale(channel, value) {
     graphPolicy.setStoppedScale(channel, Number(value), reviewState().enabled);
+    presentation.update();
+  }
+
+  // Presentation-only Y authority. Neither route touches the model, the
+  // retained history, CSV, the adapter or the transport; both are refused
+  // outside stopped review by the same readiness gate the controls use.
+  function panYOrigin(channel, origin) {
+    graphPolicy.setStoppedOrigin(channel, origin, reviewState().enabled);
+    presentation.update();
+  }
+
+  function autoY(channel) {
+    graphPolicy.autoStoppedY(channel, reviewState().enabled);
     presentation.update();
   }
 
@@ -173,6 +191,10 @@ export function createViewerApplication({
       if (axis !== "x") {
         const select = root.querySelector(`[data-y-scale="${axis}"]`);
         select.onchange = () => changeScale(axis, select.value);
+      }
+      if (axis !== "x") {
+        const auto = root.querySelector(`[data-y-auto="${axis}"]`);
+        auto.onclick = () => { if (!auto.disabled) autoY(axis); };
       }
       for (const [direction, delta] of [["in", -1], ["out", 1]]) {
         const button = root.querySelector(`[data-zoom-${direction}="${axis}"]`);
@@ -268,6 +290,9 @@ export function createViewerApplication({
     actionDiagnostics,
     graphPolicy,
     historyReview,
+    // Read-only gesture inspection for host tests. It exposes the existing
+    // per-canvas controller; it is not a second gesture owner or a mutator.
+    interactionState(channel) { return interactions.find(interaction => interaction.channel === channel) ?? null; },
     destroy() {
       if (destroyed) return;
       destroyed = true;

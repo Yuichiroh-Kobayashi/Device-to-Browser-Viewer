@@ -5,6 +5,13 @@ export const PINCH_AXIS_LOCK_THRESHOLD = 0.04;
 export const PINCH_SEPARATION_FLOOR = 0.1;
 export const PINCH_HYSTERESIS = 1.08;
 
+/**
+ * The one normalized axis-lock primitive, shared by the two-pointer pinch and
+ * the one-pointer drag. Both compare how far a pair of points has moved apart
+ * relative to plot width and height, so neither axis wins merely because the
+ * plot is wider than it is tall. Below the threshold, and on an exact tie,
+ * no axis is chosen yet and the gesture waits.
+ */
 export function pinchAxis(start, current, width, height) {
   const x = Math.abs(current.x - start.x) / Math.max(1, width);
   const y = Math.abs(current.y - start.y) / Math.max(1, height);
@@ -28,10 +35,25 @@ const separation = (points) => {
   return { x: Math.abs(a.x - b.x), y: Math.abs(a.y - b.y) };
 };
 
+/**
+ * Where the two-pointer midpoint sits inside the plot, as a fraction measured
+ * up from the plot floor and clamped to the plot itself. Combined with the
+ * gesture-start origin and scale it fixes one measured value under the
+ * fingers; each quantized scale step then re-derives the origin from that
+ * same value, so a Y pinch zooms about the midpoint instead of about the
+ * bottom edge. Both inputs are gesture-start values, never frame values, so
+ * repeated moves inside one gesture cannot accumulate drift.
+ */
+const anchorFraction = (points, rect, pad, ph) => {
+  const [a, b] = [...points.values()];
+  const floor = (rect.top ?? 0) + pad.top + ph;
+  return Math.min(1, Math.max(0, (floor - (a.y + b.y) / 2) / ph));
+};
+
 /** One graph surface, bounded to two pointers. Only presentation callbacks. */
 export class GraphInteractionController {
-  constructor(surface, { channel, getState, changeWindow, changeScale, panTo }) {
-    Object.assign(this, { surface, channel, getState, changeWindow, changeScale, panTo });
+  constructor(surface, { channel, getState, changeWindow, changeScale, panTo, panYOrigin }) {
+    Object.assign(this, { surface, channel, getState, changeWindow, changeScale, panTo, panYOrigin });
     this.pointers = new Map(); this.mode = null; this.axis = null; this.baseline = null;
     surface.onpointerdown = (event) => this.down(event);
     surface.onpointermove = (event) => this.move(event);
@@ -55,16 +77,21 @@ export class GraphInteractionController {
     if (this.mode === "pinch" && this.pointers.size < 2) return;
     this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     this.surface.setPointerCapture?.(event.pointerId);
-    const { pw, ph } = plotGeometry(this.surface.getBoundingClientRect());
+    const rect = this.surface.getBoundingClientRect();
+    const { pw, ph, pad } = plotGeometry(rect);
     if (this.pointers.size === 1) {
       this.mode = "pan";
-      this.baseline = { x: event.clientX, rightEdge: state.review.rightEdge, window: state.windowSeconds, pw, ph };
+      this.axis = null;
+      this.baseline = { x: event.clientX, y: event.clientY, rightEdge: state.review.rightEdge, window: state.windowSeconds,
+        yOrigin: state.yOrigin, yScale: state.yScale, pw, ph };
     } else {
       this.mode = "pinch";
       this.axis = null;
       const scales = this.channel === "voltage" ? VOLTAGE_SCALES : CURRENT_SCALES;
+      const fraction = anchorFraction(this.pointers, rect, pad, ph);
       this.baseline = { separation: separation(this.pointers), pw, ph,
-        xIndex: DISPLAY_WINDOWS.indexOf(state.windowSeconds), yIndex: scales.indexOf(state.yScale) };
+        xIndex: DISPLAY_WINDOWS.indexOf(state.windowSeconds), yIndex: scales.indexOf(state.yScale),
+        yAnchorFraction: fraction, yAnchorValue: state.yOrigin + fraction * 9 * state.yScale };
     }
   }
   move(event) {
@@ -85,11 +112,27 @@ export class GraphInteractionController {
       const initial = this.axis === "x" ? start.xIndex : start.yIndex;
       const previous = scales.indexOf(this.axis === "x" ? state.windowSeconds : state.yScale);
       const target = scales[quantizePinch(scales, initial, ratio, previous)];
-      if (this.axis === "x") this.changeWindow(target);
-      else this.changeScale(this.channel, target);
-    } else if (typeof start.rightEdge === "bigint") {
-      const delta = (event.clientX - start.x) / start.pw * start.window * 1e6;
-      if (Number.isFinite(delta)) this.panTo(start.rightEdge - BigInt(Math.round(delta)));
+      if (this.axis === "x") { this.changeWindow(target); return; }
+      this.changeScale(this.channel, target);
+      const origin = start.yAnchorValue - start.yAnchorFraction * 9 * target;
+      if (Number.isFinite(origin)) this.panYOrigin?.(this.channel, origin);
+    } else {
+      // One pointer serves both review axes. The axis is chosen once, from the
+      // same normalized dominance rule the pinch uses, and then stays locked
+      // for the rest of the gesture even if the drag reverses direction.
+      this.axis ??= pinchAxis(start, { x: event.clientX, y: event.clientY }, start.pw, start.ph);
+      if (!this.axis) return;
+      if (this.axis === "x") {
+        if (typeof start.rightEdge !== "bigint") return;
+        const delta = (event.clientX - start.x) / start.pw * start.window * 1e6;
+        if (Number.isFinite(delta)) this.panTo(start.rightEdge - BigInt(Math.round(delta)));
+        return;
+      }
+      // Dragging down raises the origin, so the waveform follows the pointer.
+      // Both values come from the gesture baseline, never from a rendered
+      // frame, so panning moves the origin without ever changing the scale.
+      const origin = start.yOrigin + (event.clientY - start.y) / start.ph * start.yScale * 9;
+      if (Number.isFinite(origin)) this.panYOrigin?.(this.channel, origin);
     }
   }
   end(event) {

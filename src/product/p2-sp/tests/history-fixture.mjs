@@ -4,9 +4,16 @@ import { createViewerApplication } from "../app.js";
 import { makeStartedText, makeWelcomeText, makeViFrame, makeStreamEndFrame, makeStoppedText } from "../../source-export/viewer/src/sources/synthetic-source.js";
 
 function createContext() {
-  const context = { text: [], textPositions: [], measureText: (text) => ({ width: String(text).length * 6 }) };
+  const context = { text: [], textPositions: [], strokes: [], measureText: (text) => ({ width: String(text).length * 6 }) };
   for (const name of ["setTransform", "clearRect", "fillRect", "beginPath", "moveTo", "lineTo", "stroke", "setLineDash", "save", "translate", "rotate", "restore", "clip", "rect"]) context[name] = () => {};
-  context.clearRect = () => { context.textPositions = []; };
+  context.clearRect = () => { context.textPositions = []; context.strokes = []; };
+  // Record stroked geometry with the lineWidth in force. The waveform is the
+  // only stroke drawn at 1.7, so a test can read back real plotted points
+  // without depending on grid, zero-boundary or marker strokes.
+  context.beginPath = () => { context.path = []; };
+  context.moveTo = (x, y) => context.path?.push({ x, y });
+  context.lineTo = (x, y) => context.path?.push({ x, y });
+  context.stroke = () => { context.strokes.push({ lineWidth: context.lineWidth, points: context.path ?? [] }); };
   context.fillText = (text, x, y) => { context.text.push(String(text)); context.textPositions.push({ text: String(text), x, y, width: context.measureText(text).width }); };
   return context;
 }
@@ -24,7 +31,7 @@ class FakeNode {
     this.dataset = {};
     this.captured = new Set();
     this.captureCalls = 0;
-    this.rect = { width: 640, height: 288 };
+    this.rect = { width: 640, height: 288, top: 0, left: 0 };
     for (const [name, value] of Object.entries(attributes)) {
       if (name.startsWith("data-")) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
     }
@@ -124,6 +131,14 @@ export function fixture({ csvDownload } = {}) {
     position(value) { const control = root.querySelector("[data-history-position]"); control.value = String(value); control.oninput(); },
     scale(channel, value) { const control = root.querySelector(`[data-y-scale="${channel}"]`); control.value = String(value); control.onchange(); },
     zoom(axis, direction) { root.querySelector(`[data-zoom-${direction}="${axis}"]`).onclick(); },
+    auto(channel) { root.querySelector(`[data-y-auto="${channel}"]`).onclick(); },
+    yState(channel) { return app.graphPolicy.yPresentation(channel); },
+    waveform(channel) {
+      return root.querySelector(`[data-waveform="${channel}"]`).context.strokes.filter(stroke => stroke.lineWidth === 1.7).flatMap(stroke => stroke.points);
+    },
+    ticks(channel) {
+      return root.querySelector(`[data-waveform="${channel}"]`).context.textPositions.filter(entry => entry.x === 3).map(entry => entry.text);
+    },
     pointer(channel, type, id, x = 100, y = 100) {
       root.querySelector(`[data-waveform="${channel}"]`)[`onpointer${type}`]?.({ pointerId: id, clientX: x, clientY: y, button: 0 });
     },

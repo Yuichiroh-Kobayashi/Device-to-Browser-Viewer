@@ -26,8 +26,17 @@ export class GraphWaveformCanvas {
     const c = this.context; c.setTransform(ratio, 0, 0, ratio, 0, 0); c.clearRect(0, 0, width, height); c.fillStyle = style(this.canvas, "background", "#ffffff"); c.fillRect(0, 0, width, height);
     c.font = "600 13px system-ui,sans-serif"; c.fillStyle = style(this.canvas, "foreground", "#18212f"); c.fillText(`${this.title} (${this.unit})`, 10, 17);
     c.font = "11px ui-monospace,monospace"; c.strokeStyle = style(this.canvas, "grid", "#8a8a8a"); c.lineWidth = 1;
-    for (let i = 0; i <= 9; i += 1) { const y = pad.top + ph * (9 - i) / 9; c.beginPath(); c.moveTo(pad.left, y); c.lineTo(pad.left + pw, y); c.stroke(); c.fillStyle = style(this.canvas, "foreground", "#18212f"); c.fillText(formatYAxisTick(i * frame.scale, this.channel, frame.scale), 3, y + 4); }
-    c.strokeStyle = style(this.canvas, "zero-boundary", "#4a5666"); c.beginPath(); c.moveTo(pad.left, pad.top + ph); c.lineTo(pad.left + pw, pad.top + ph); c.stroke();
+    // One presentation origin drives the numeric tick values and the waveform
+    // transform below, so the axis and the trace can never disagree. At the
+    // LIVE and latched-Stop origin of 0 this is the previous geometry exactly.
+    const origin = frame.origin ?? 0;
+    const yOf = (y) => pad.top + ph - (y - origin) / (frame.scale * 9) * ph;
+    for (let i = 0; i <= 9; i += 1) { const y = pad.top + ph * (9 - i) / 9; c.beginPath(); c.moveTo(pad.left, y); c.lineTo(pad.left + pw, y); c.stroke(); c.fillStyle = style(this.canvas, "foreground", "#18212f"); c.fillText(formatYAxisTick(origin + i * frame.scale, this.channel, frame.scale), 3, y + 4); }
+    // The zero boundary marks the value 0, not the bottom of the plot. A
+    // manual origin can move it inside the plot or off it entirely; it is
+    // never redrawn at the viewport floor under a non-zero origin.
+    const zeroY = yOf(0);
+    if (zeroY >= pad.top && zeroY <= pad.top + ph) { c.strokeStyle = style(this.canvas, "zero-boundary", "#4a5666"); c.beginPath(); c.moveTo(pad.left, zeroY); c.lineTo(pad.left + pw, zeroY); c.stroke(); }
     const { ticks } = makeXAxisGrid(frame.domain, precision, pw);
     const labels = ticks.map(tick => {
       const x = pad.left + (tick.value - frame.domain.minimum) / (frame.domain.maximum - frame.domain.minimum) * pw;
@@ -41,7 +50,7 @@ export class GraphWaveformCanvas {
     c.strokeStyle = style(this.canvas, "grid", "#8a8a8a");
     for (const [index, tick] of labels.entries()) { c.beginPath(); c.moveTo(tick.x, pad.top); c.lineTo(tick.x, pad.top + ph); c.stroke(); c.fillText(tick.label, tick.left, height - 11 - (stagger && index % 2 === 0 ? 13 : 0)); }
     c.fillText("s", width - 12, height - 11);
-    const xOf = (x) => pad.left + (x - frame.domain.minimum) / (frame.domain.maximum - frame.domain.minimum) * pw; const yOf = (y) => pad.top + ph - y / (frame.scale * 9) * ph;
+    const xOf = (x) => pad.left + (x - frame.domain.minimum) / (frame.domain.maximum - frame.domain.minimum) * pw;
     c.save(); c.beginPath(); c.rect(pad.left, pad.top, pw, ph); c.clip(); c.strokeStyle = style(this.canvas, this.channel === "voltage" ? "voltage-accent" : "current-accent", "#005aff"); c.lineWidth = 1.7;
     for (const path of frame.paths) { c.beginPath(); c.moveTo(xOf(path[0].x), yOf(path[0].y)); for (const point of path.slice(1)) c.lineTo(xOf(point.x), yOf(point.y)); c.stroke(); }
     c.restore();

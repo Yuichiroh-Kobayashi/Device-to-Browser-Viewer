@@ -98,9 +98,11 @@ export function createViewerApplication({
     });
     interactions = ["voltage", "current"].map(channel => new GraphInteractionController(waveforms[channel].canvas, {
       channel,
-      getState: () => ({ windowSeconds: graphPolicy.windowSeconds,
-        yScale: channelScales(channel)[graphPolicy.scaleIndices[channel]], review: reviewState() }),
-      changeWindow, changeScale,
+      getState: () => {
+        const y = graphPolicy.yPresentation(channel);
+        return { windowSeconds: graphPolicy.windowSeconds, yScale: y.scale, yOrigin: y.origin, review: reviewState() };
+      },
+      changeWindow, changeScale, panYOrigin,
       panTo: timestamp => {
         historyReview.panTo(timestamp, owner.model.historySummary(), owner.stoppedHistoryReady, graphPolicy.windowSeconds);
         presentation.update();
@@ -116,6 +118,19 @@ export function createViewerApplication({
 
   function changeScale(channel, value) {
     graphPolicy.setStoppedScale(channel, Number(value), reviewState().enabled);
+    presentation.update();
+  }
+
+  // Presentation-only Y authority. Neither route touches the model, the
+  // retained history, CSV, the adapter or the transport; both are refused
+  // outside stopped review by the same readiness gate the controls use.
+  function panYOrigin(channel, origin) {
+    graphPolicy.setStoppedOrigin(channel, origin, reviewState().enabled);
+    presentation.update();
+  }
+
+  function autoY(channel) {
+    graphPolicy.autoStoppedY(channel, reviewState().enabled);
     presentation.update();
   }
 
@@ -173,6 +188,10 @@ export function createViewerApplication({
       if (axis !== "x") {
         const select = root.querySelector(`[data-y-scale="${axis}"]`);
         select.onchange = () => changeScale(axis, select.value);
+      }
+      if (axis !== "x") {
+        const auto = root.querySelector(`[data-y-auto="${axis}"]`);
+        auto.onclick = () => { if (!auto.disabled) autoY(axis); };
       }
       for (const [direction, delta] of [["in", -1], ["out", 1]]) {
         const button = root.querySelector(`[data-zoom-${direction}="${axis}"]`);

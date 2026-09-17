@@ -45,6 +45,7 @@ CURRENT_PRODUCT_ALLOWLIST = frozenset({
     "presentation/graph-interaction.js",
     "tests/graph-interaction.test.mjs",
     "tests/stopped-scale.test.mjs",
+    "tests/y-axis-origin.test.mjs",
     "tests/session-history.test.mjs",
     "tests/history-review.test.mjs",
     "tests/history-fixture.mjs",

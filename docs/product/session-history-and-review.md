@@ -1,6 +1,6 @@
 # Stopped-session history and review
 
-Related to [Viewer #20](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/20) and [Viewer #24](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/24).
+Related to [Viewer #20](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/20), [Viewer #24](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/24) and [Viewer #25](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/25).
 This is current product source behavior, pending external review and downstream
 intake. The Viewer shipped in stable VAMeter-Edu v2.0.0 remains source
 `e1ebdb1cde8585a37447a66f4c8183654f4c3cda`, bundle
@@ -133,14 +133,16 @@ by this ratio is quantized at geometric ladder midpoints with an 8% hysteresis
 band. Large motion may cross multiple steps; pinch-out selects smaller scale.
 These are deterministic development values, pending actual tablet usability.
 
-One-pointer horizontal drag changes the same review cursor by horizontal pixels
+One pointer serves both review axes. The axis is chosen once per gesture from
+the same normalized dominance rule the pinch uses -- absolute movement divided
+by plot width and height, `PINCH_AXIS_LOCK_THRESHOLD = 0.04`, ties wait -- and
+then stays locked until the gesture ends or is cancelled, even if dominance
+reverses. A horizontal drag changes the same review cursor by horizontal pixels
 / plot width * selected device-time window (rounded to the nearest microsecond
-only for the presentation cursor). Movement clamps to retained earliest/latest.
-Y motion is ignored. All LIVE canvas graph gestures, including X pinch, are inactive. Current's lower
-bound remains exactly 0 A. Vertical pan/Y origin is explicitly outside this
-implementation: [Viewer #25](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/25)
-is separate follow-on work, subject to [Viewer #14](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/14)
-and [VAMeter-Edu #15](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/15).
+only for the presentation cursor), clamped to retained earliest/latest. A
+vertical drag changes only that graph's Y origin (see below). All LIVE canvas
+graph gestures, including X pinch and vertical pan, are inactive, and LIVE
+Voltage and Current lower bounds remain exactly 0 V and 0 A.
 
 Native X/Y selects and adjacent zoom buttons share GraphPolicyController state
 with pinch. Disabled controls remain mounted with native disabled semantics,
@@ -151,7 +153,6 @@ canvas CSS declares ownership before pointerdown. Page and controls retain
 browser/OS behavior. No proprietary gestures, global suppression or dependencies.
 No extra mode-guidance DOM is added in this correction: the native controls and
 existing review status stay primary, without adding another line to narrow layouts.
-Vertical pan and Auto Y remain outside this change (#25).
 
 Centered per-division outputs and renderer readout plumbing are removed from both
 graphs. Numeric axis ticks, X window dropdown and Y scale dropdown remain the
@@ -163,6 +164,98 @@ scale options. Measurement/model and CSV values remain signed A. Zero ticks stay
 options; the existing `横軸 拡大 / Zoom in` and `横軸 縮小 / Zoom out` labels remain.
 The mode toggle is last in the shared control area, after review (and CSV controls
 when included). Remounts preserve the same window, scales, history and cursor.
+
+## Y-axis origin authority and stopped vertical pan
+
+Related to [Viewer #25](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/25).
+
+Each graph channel has exactly one Y presentation state, owned by the same
+application-lifetime `GraphPolicyController` that already owns the stopped Y
+scale indices. There is no second Y owner, no per-mode copy, and no DOM-stored
+Y state; Student and Professional read and mutate the same instance.
+
+```text
+LIVE_AUTO_ZERO        origin 0, existing live staged autoscale, manual Y refused
+STOPPED_LATCHED_ZERO  origin 0, last live frame scale, X review never moves Y
+STOPPED_AUTO_ZERO     origin 0, scale re-derived from the visible X viewport
+STOPPED_MANUAL_FREE   origin and scale user-controlled, X review never moves Y
+```
+
+Normal Stop enters `STOPPED_LATCHED_ZERO` per channel. Any manual Y operation
+for a channel -- vertical pan, Y pinch, Y scale dropdown, Y zoom in, Y zoom out
+-- enters `STOPPED_MANUAL_FREE` for that channel alone. That channel's Y Auto
+control enters `STOPPED_AUTO_ZERO`. An accepted new stream returns both
+channels to `LIVE_AUTO_ZERO` with origin 0, through the existing epoch reset.
+A failed next Start never reaches STREAMING and therefore never resets: the
+previously accepted stopped review keeps its cursor, scales and Y state.
+Voltage and Current states are independent throughout.
+
+Y origin is presentation state in channel units. It is applied only to the
+rendered viewport `[origin, origin + 9 * scale]`. It does not reach measurement
+records, retained history, sequence, validity, `timestamp_us`, CSV values or
+bytes, WebSocket frames, the SessionAdapter, the RuntimeOwner, the D2B wire or
+schema, or any Firmware behavior. The numeric Y axis labels and the waveform
+transform are both derived from the one `frame.origin`, so a waveform shifted
+against a fixed axis is structurally impossible rather than merely unintended.
+The zero boundary marks the value 0: under a manual origin it moves with the
+data and is not drawn at all when 0 leaves the viewport, instead of being
+redrawn at the plot floor.
+
+Vertical pan is one-pointer, stopped-review only, and uses the existing Pointer
+Events and pointer capture path with no second gesture engine. Dragging down
+raises the origin so the waveform follows the pointer; the origin moves by
+dragged pixels / plot height * nine divisions, computed from the gesture
+baseline so repeated moves cannot accumulate drift. Pan alone never changes
+the discrete scale. The origin is not clamped to the measured range: recovery
+from an origin that has left the data behind is the channel's Y Auto control,
+not a presentation bound invented from the measurement domain. Only non-finite
+values are refused. `pointercancel`, lost capture, remount, destroy and an
+accepted new stream clear active gesture state, and a pinch remainder still
+cannot continue as a one-pointer pan.
+
+Stopped Y pinch remains quantized to the existing `VOLTAGE_SCALES` /
+`CURRENT_SCALES` ladders. It additionally anchors on the two-pointer midpoint:
+the gesture-start origin and scale fix one measured value under the fingers,
+and each quantized step re-derives the origin from that same value, so a pinch
+zooms about the midpoint rather than about the plot floor. Both inputs are
+gesture-start values, never frame values.
+
+Y Auto is one native button per channel, `自動 / Auto`, beside that channel's
+existing scale controls. One activation clears the manual origin, returns the
+origin to exactly 0, selects a scale from the records visible in the current X
+viewport, and enters `STOPPED_AUTO_ZERO`. The selection is not a new autoscale
+algorithm: it is the existing `updateStagedScale` ladder authority evaluated
+from the ladder minimum, which makes the result a pure function of the visible
+values rather than of the index the viewer happened to arrive from. A viewport
+with no positive peak holds the current scale instead of collapsing to the
+ladder minimum. In `STOPPED_AUTO_ZERO` an X cursor or window change may
+deterministically re-fit that channel's scale; the next manual Y operation
+returns the channel to `STOPPED_MANUAL_FREE`, after which X review changes
+alter neither origin nor scale.
+
+Auto stays mounted in LIVE and is disabled there, because LIVE already is the
+zero-origin autoscale state; `aria-pressed` carries that fact natively and
+`data-y-mode` exposes the current state. Controls remain visible when disabled,
+with the existing native `disabled` semantics, muted full-opacity text and
+dashed border. The existing `touch-action` boundary is unchanged: only a canvas
+in stopped review declares `touch-action: none`, so page scroll and browser
+zoom keep their behaviour everywhere else. No proprietary iOS or ChromeOS
+gesture API is used.
+
+In stopped `STOPPED_MANUAL_FREE` the Current graph's visible lower bound may
+move below or above 0 A. This is a viewport operation only: signed negative
+current remains measurement and model authority, CSV values are never
+transformed by origin or scale, and the Viewer does not become a relay or
+safety authority. The frame's `reverseObservation` is derived from the records
+in the X window before any Y clipping, so it is unchanged by origin and scale
+and a future reverse-current warning can be presented outside the clipped plot.
+Whether such a warning actually persists is NOT ESTABLISHED HERE: no
+reverse-current warning presentation exists in this repository yet, and that
+acceptance item depends on
+[Viewer #14](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/14)
+and [VAMeter-Edu #15](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/15).
+No reverse-current threshold, debounce, browser-side detector or safety policy
+is introduced here.
 
 In this retained product model, `viewerWindowEvictionCount == 0` is normal.
 The diagnostic field remains for comparison with the harness, while bounded

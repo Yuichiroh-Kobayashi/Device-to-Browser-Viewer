@@ -26,6 +26,34 @@ export function updateStagedScale(scales, scaleIndex, values) {
   return Object.freeze({ scaleIndex: next, transition, positivePeak });
 }
 
+/**
+ * Y presentation states, one per Graph channel (Issue #25). Origin and scale
+ * are presentation only: no state here reaches a measurement record, retained
+ * history, CSV, the SessionAdapter, the WebSocket, or the D2B wire.
+ *
+ *   LIVE_AUTO_ZERO        origin 0, existing live staged autoscale, no manual Y
+ *   STOPPED_LATCHED_ZERO  origin 0, last live frame scale, X review never moves Y
+ *   STOPPED_AUTO_ZERO     origin 0, scale re-derived from the visible X viewport
+ *   STOPPED_MANUAL_FREE   origin and scale user-controlled, X review never moves Y
+ */
+export const Y_PRESENTATION_STATES = Object.freeze(["LIVE_AUTO_ZERO", "STOPPED_LATCHED_ZERO", "STOPPED_AUTO_ZERO", "STOPPED_MANUAL_FREE"]);
+
+/**
+ * Stopped Y Auto scale for one channel. This is not a second autoscale
+ * algorithm: it is the existing updateStagedScale ladder authority evaluated
+ * from the ladder minimum, which makes the result a pure function of the
+ * values visible in the current X viewport rather than of how the viewer
+ * arrived at the present index. Iterating the staged rule from the current
+ * index instead would settle on different indices for the same records, so
+ * "Auto" would not be reproducible. An empty or wholly negative viewport has
+ * no positive peak to fit and holds the current index rather than collapsing
+ * to the ladder minimum.
+ */
+export function viewportAutoScaleIndex(scales, currentIndex, values) {
+  const evaluation = updateStagedScale(scales, 0, values);
+  return evaluation.positivePeak === null ? currentIndex : evaluation.scaleIndex;
+}
+
 export function makeTimeDomain(originTimestampUs, latestTimestampUs, windowSeconds) {
   if (!DISPLAY_WINDOWS.includes(windowSeconds)) throw new RangeError("unsupported display window");
   if (typeof originTimestampUs !== "bigint" || typeof latestTimestampUs !== "bigint") return Object.freeze({ minimum: 0, maximum: windowSeconds });
@@ -136,7 +164,7 @@ function sameRun(left, right, channel) {
     && !right.flags?.timebase_reset && !right.flags?.discontinuity && !(right.flags?.gap_samples > 0n);
 }
 
-export function constructGraphFrame({ records, channel, scale, domain, originTimestampUs }) {
+export function constructGraphFrame({ records, channel, scale, domain, originTimestampUs, origin = 0 }) {
   const valid = [];
   const invalid = [];
   let observedInWindow = false; let mostNegative = null;
@@ -150,7 +178,11 @@ export function constructGraphFrame({ records, channel, scale, domain, originTim
     valid.push({ record, sourceIndex, x, y: value });
     if (channel === "current" && value < 0) { observedInWindow = true; mostNegative = mostNegative === null ? value : Math.min(mostNegative, value); }
   }
-  const rectangle = { xMin: domain.minimum, xMax: domain.maximum, yMin: 0, yMax: 9 * scale };
+  // The Y viewport is [origin, origin + 9 * scale]. Clipping, the numeric axis
+  // and the waveform transform all read this one origin, so a shifted waveform
+  // can never be drawn against an unshifted axis. origin 0 is the LIVE and
+  // latched-Stop viewport and reproduces the previous rectangle exactly.
+  const rectangle = { xMin: domain.minimum, xMax: domain.maximum, yMin: origin, yMax: origin + 9 * scale };
   const paths = []; let path = null;
   for (let index = 1; index < valid.length; index += 1) {
     const previous = valid[index - 1]; const current = valid[index];
@@ -167,9 +199,9 @@ export function constructGraphFrame({ records, channel, scale, domain, originTim
   }
   const frozenPaths = Object.freeze(paths.map((entry) => Object.freeze(entry.points)));
   return Object.freeze({
-    channel, scale, divisions: 9, domain: Object.freeze({ ...domain }), originTimestampUs,
+    channel, scale, origin, divisions: 9, domain: Object.freeze({ ...domain }), originTimestampUs,
     measurementState: valid.length ? "valid" : "no-valid-data",
-    plotState: frozenPaths.length ? "visible" : valid.length && valid.some((entry) => entry.y < 0 || entry.y > rectangle.yMax) ? "clipped-out" : "empty",
+    plotState: frozenPaths.length ? "visible" : valid.length && valid.some((entry) => entry.y < rectangle.yMin || entry.y > rectangle.yMax) ? "clipped-out" : "empty",
     paths: frozenPaths,
     invalid: Object.freeze(invalid),
     reverseObservation: Object.freeze({ observedInWindow, mostNegative }),
@@ -178,7 +210,12 @@ export function constructGraphFrame({ records, channel, scale, domain, originTim
 
 export class GraphPolicyController {
   constructor({ windowSeconds = 60 } = {}) { this.windowSeconds = windowSeconds; this.epochGeneration = 0; this.windowGeneration = 0; this.previousControlState = null; this.reset(); }
-  reset() { this.scaleIndices = { voltage: 0, current: 0 }; this.originTimestampUs = null; this.streamId = null; this.reverseObservation = { observedInWindow: false, mostNegative: null }; this.epochGeneration += 1; this.scaleEvaluationIdentity = { voltage: null, current: null }; }
+  reset() { this.scaleIndices = { voltage: 0, current: 0 }; this.originTimestampUs = null; this.streamId = null; this.reverseObservation = { observedInWindow: false, mostNegative: null }; this.epochGeneration += 1; this.scaleEvaluationIdentity = { voltage: null, current: null }; this.yState = { voltage: { mode: "LIVE_AUTO_ZERO", origin: 0 }, current: { mode: "LIVE_AUTO_ZERO", origin: 0 } }; }
+  yPresentation(channel) {
+    const state = this.yState[channel];
+    if (!state) throw new TypeError("channel must be voltage or current");
+    return Object.freeze({ mode: state.mode, origin: state.origin, scale: (channel === "voltage" ? VOLTAGE_SCALES : CURRENT_SCALES)[this.scaleIndices[channel]] });
+  }
   observeLifecycle({ controlState, streamId = null, timebaseReset = false } = {}) {
     const enteredStreaming = this.previousControlState !== "STREAMING" && controlState === "STREAMING";
     const streamChanged = streamId !== null && this.streamId !== null && streamId !== this.streamId;
@@ -188,11 +225,35 @@ export class GraphPolicyController {
     return enteredStreaming || timebaseReset || streamChanged;
   }
   setWindowSeconds(value) { if (!DISPLAY_WINDOWS.includes(value)) throw new RangeError("unsupported display window"); if (this.windowSeconds !== value) { this.windowSeconds = value; this.windowGeneration += 1; this.scaleEvaluationIdentity = { voltage: null, current: null }; } }
+  // Every manual stopped Y scale route -- dropdown, adjacent zoom button and
+  // Y pinch -- lands here, so manual mode is entered in exactly one place.
   setStoppedScale(channel, value, stoppedReady) {
     const scales = channel === "voltage" ? VOLTAGE_SCALES : channel === "current" ? CURRENT_SCALES : [];
     const index = scales.indexOf(value);
     if (!stoppedReady || index < 0) return false;
     this.scaleIndices[channel] = index;
+    this.yState[channel].mode = "STOPPED_MANUAL_FREE";
+    return true;
+  }
+  /**
+   * Manual stopped Y origin, in channel units, for vertical pan. The origin is
+   * not clamped to the measured range: recovery from an origin that has left
+   * the data behind is the channel's own Y Auto control, not a bound invented
+   * from the measurement domain. Only non-finite values are refused.
+   */
+  setStoppedOrigin(channel, origin, stoppedReady) {
+    const state = this.yState[channel];
+    if (!stoppedReady || !state || typeof origin !== "number" || !Number.isFinite(origin)) return false;
+    state.origin = origin;
+    state.mode = "STOPPED_MANUAL_FREE";
+    return true;
+  }
+  /** Per-channel Y Auto: zero origin, then fit the current visible X viewport. */
+  autoStoppedY(channel, stoppedReady) {
+    const state = this.yState[channel];
+    if (!stoppedReady || !state) return false;
+    state.origin = 0;
+    state.mode = "STOPPED_AUTO_ZERO";
     return true;
   }
   update(records, { originTimestampUs = null, rightEdgeTimestampUs = null, autoscale = true } = {}) {
@@ -206,17 +267,28 @@ export class GraphPolicyController {
       return x >= domain.minimum && x <= domain.maximum;
     });
     for (const channel of ["voltage", "current"]) {
-      const latestValid = active.findLast((record) => finiteValue(record, channel) !== null);
-      const evaluationIdentity = `${this.epochGeneration}:${this.windowGeneration}:${rightEdgeTimestampUs ?? "live"}:${latestValid?.stream_id ?? "none"}:${latestValid?.sequence?.toString() ?? "none"}`;
-      if (autoscale && evaluationIdentity !== this.scaleEvaluationIdentity[channel]) {
-        const scales = channel === "voltage" ? VOLTAGE_SCALES : CURRENT_SCALES;
-        const scaleUpdate = updateStagedScale(scales, this.scaleIndices[channel], active.map((record) => finiteValue(record, channel)));
-        this.scaleIndices[channel] = scaleUpdate.scaleIndex;
-        this.scaleEvaluationIdentity[channel] = evaluationIdentity;
+      const scales = channel === "voltage" ? VOLTAGE_SCALES : CURRENT_SCALES;
+      const state = this.yState[channel];
+      if (autoscale) {
+        // LIVE owns both axes: zero origin and the unchanged staged autoscale.
+        if (state.mode !== "LIVE_AUTO_ZERO") { state.mode = "LIVE_AUTO_ZERO"; state.origin = 0; }
+        const latestValid = active.findLast((record) => finiteValue(record, channel) !== null);
+        const evaluationIdentity = `${this.epochGeneration}:${this.windowGeneration}:${rightEdgeTimestampUs ?? "live"}:${latestValid?.stream_id ?? "none"}:${latestValid?.sequence?.toString() ?? "none"}`;
+        if (evaluationIdentity !== this.scaleEvaluationIdentity[channel]) {
+          const scaleUpdate = updateStagedScale(scales, this.scaleIndices[channel], active.map((record) => finiteValue(record, channel)));
+          this.scaleIndices[channel] = scaleUpdate.scaleIndex;
+          this.scaleEvaluationIdentity[channel] = evaluationIdentity;
+        }
+        continue;
       }
+      // Leaving STREAMING latches the last live frame: same zero origin, same
+      // scale, and no autoscale on any review path. Only STOPPED_AUTO_ZERO
+      // re-derives a scale, and only from what the X viewport currently shows.
+      if (state.mode === "LIVE_AUTO_ZERO") { state.mode = "STOPPED_LATCHED_ZERO"; state.origin = 0; }
+      if (state.mode === "STOPPED_AUTO_ZERO") this.scaleIndices[channel] = viewportAutoScaleIndex(scales, this.scaleIndices[channel], active.map((record) => finiteValue(record, channel)));
     }
-    const voltage = constructGraphFrame({ records: active, channel: "voltage", scale: VOLTAGE_SCALES[this.scaleIndices.voltage], domain, originTimestampUs: this.originTimestampUs });
-    const current = constructGraphFrame({ records: active, channel: "current", scale: CURRENT_SCALES[this.scaleIndices.current], domain, originTimestampUs: this.originTimestampUs });
+    const voltage = constructGraphFrame({ records: active, channel: "voltage", scale: VOLTAGE_SCALES[this.scaleIndices.voltage], domain, originTimestampUs: this.originTimestampUs, origin: this.yState.voltage.origin });
+    const current = constructGraphFrame({ records: active, channel: "current", scale: CURRENT_SCALES[this.scaleIndices.current], domain, originTimestampUs: this.originTimestampUs, origin: this.yState.current.origin });
     this.reverseObservation = current.reverseObservation;
     return Object.freeze({ voltage, current, precision: timePrecision(this.windowSeconds) });
   }
